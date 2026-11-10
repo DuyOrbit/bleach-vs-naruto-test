@@ -1,0 +1,25 @@
+/*
+  Access-Control-Allow-Origin: *
+  Access-Control-Allow-Methods: GET, HEAD, OPTIONS
+  Access-Control-Allow-Headers: *
+
+/*.swf
+  Access-Control-Allow-Origin: *
+  Cache-Control: public, max-age=31536000, immutable
+
+/*.wasm
+  Access-Control-Allow-Origin: *
+  Content-Type: application/wasm
+  Cache-Control: public, max-age=31536000, immutable
+
+/fighter/*
+  Access-Control-Allow-Origin: *
+  Cache-Control: public, max-age=31536000, immutable
+
+/music/*
+  Access-Control-Allow-Origin: *
+  Cache-Control: public, max-age=31536000, immutable
+
+/ruffle/*
+  Access-Control-Allow-Origin: *
+  Cache-Control: public, max-age=31536000, immutable

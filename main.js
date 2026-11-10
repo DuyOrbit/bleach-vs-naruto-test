@@ -557,6 +557,7 @@ async function initRuffleGame() {
         rufflePlayer.style.width = "100%";
         rufflePlayer.style.height = "100%";
 
+        const baseStaticUrl = window.location.href.substring(0, window.location.href.lastIndexOf('/') + 1);
         rufflePlayer.config = {
             letterbox: "on",
             forceScale: true,
@@ -565,7 +566,8 @@ async function initRuffleGame() {
             autoplay: "on",
             unmuteOverlay: "hidden",
             splashScreen: false,
-            backgroundExecutionMode: "mainThread"
+            backgroundExecutionMode: "mainThread",
+            base: baseStaticUrl
         };
 
         loadingOverlay.classList.remove('hidden');
@@ -1589,6 +1591,24 @@ function joinRoomAsGuest(roomId) {
     window.focus();
 
     connectWebSocketAndSend({ type: 'join_room', roomId });
+}
+
+// Tự động đánh thức máy chủ Render trong nền khi vừa mở trang (chống delay cold start)
+function wakeUpSignalingServer() {
+    try {
+        const wsUrl = getWebSocketUrl();
+        let httpUrl = null;
+        if (wsUrl.startsWith('wss://')) {
+            httpUrl = wsUrl.replace('wss://', 'https://').replace(/\/+$/, '') + '/healthz';
+        } else if (wsUrl.startsWith('ws://')) {
+            httpUrl = wsUrl.replace('ws://', 'http://').replace(/\/+$/, '') + '/healthz';
+        }
+        if (httpUrl && !httpUrl.includes('localhost') && !httpUrl.includes('127.0.0.1')) {
+            fetch(httpUrl, { method: 'GET', mode: 'no-cors', cache: 'no-cache' })
+                .then(() => console.log(`[Signaling] Đã gửi ping đánh thức máy chủ Render (${httpUrl})`))
+                .catch(() => {});
+        }
+    } catch (_) {}
 }
 
 function getWebSocketUrl() {
@@ -2731,6 +2751,7 @@ if (btnCopyStkBanner) {
 // 11. KHỞI ĐỘNG
 // ==========================================
 window.addEventListener('DOMContentLoaded', () => {
+    wakeUpSignalingServer();
     renderGuides();
     syncHudKeyLabels();
     setupVirtualControls();
