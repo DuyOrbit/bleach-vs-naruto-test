@@ -973,14 +973,8 @@ function setupGuestWebRtc() {
         if (event.track) {
             guestStream.addTrack(event.track);
         }
-        // Giảm jitter buffer xuống 0 để loại bỏ độ trễ truyền hình ảnh
-        try {
-            peerConnection.getReceivers().forEach(receiver => {
-                if ('playoutDelayHint' in receiver) receiver.playoutDelayHint = 0;
-                if ('jitterBufferDelayHint' in receiver) receiver.jitterBufferDelayHint = 0;
-                if ('jitterBufferTarget' in receiver) receiver.jitterBufferTarget = 0;
-            });
-        } catch (e) {}
+        // Giảm jitter buffer xuống mức thấp nhất (0-50ms) để loại bỏ độ trễ truyền hình ảnh
+        applyLowLatencyReceiverHints(peerConnection);
 
         if (remoteVideo && remoteVideo.paused) {
             remoteVideo.play().catch(err => {
@@ -1001,9 +995,35 @@ function setupGuestWebRtc() {
     peerConnection.onconnectionstatechange = () => {
         console.log("Guest PeerConnection state:", peerConnection.connectionState);
         if (peerConnection.connectionState === 'connected') {
-            showSyncNotification("🟢 Đã đồng bộ màn hình trận đấu trực tiếp từ Chủ phòng (60FPS HD)!");
+            applyLowLatencyReceiverHints(peerConnection);
+            showSyncNotification("🟢 Đã đồng bộ màn hình trận đấu trực tiếp từ Chủ phòng (30FPS HD)!");
         }
     };
+}
+
+// Đặt jitterBufferTarget và playoutDelayHint ở mức thấp (0-50ms) cho máy Khách
+function applyLowLatencyReceiverHints(pc) {
+    if (!pc) return;
+    try {
+        const receivers = pc.getReceivers();
+        receivers.forEach(receiver => {
+            // playoutDelayHint: 0 - 0.05s (0-50ms)
+            if ('playoutDelayHint' in receiver) {
+                try { receiver.playoutDelayHint = 0; } catch (_) {}
+            }
+            if ('jitterBufferDelayHint' in receiver) {
+                try { receiver.jitterBufferDelayHint = 0; } catch (_) {}
+            }
+            // jitterBufferTarget: thử 0ms, fallback 20ms
+            if ('jitterBufferTarget' in receiver) {
+                try { receiver.jitterBufferTarget = 0; } catch (_) {
+                    try { receiver.jitterBufferTarget = 20; } catch (_) {}
+                }
+            }
+        });
+    } catch (e) {
+        console.warn("Không thể thiết lập jitterBufferTarget/playoutDelayHint:", e);
+    }
 }
 
 async function handleWebRtcOffer(sdp) {
@@ -1475,6 +1495,7 @@ function handleNetworkMessage(data) {
     if (data.type === 'peer_disconnected') {
         stopHostP2Watchdog();
         stopGuestStateSender();
+        stopStatsMonitoring();
         updateStatus('waiting', 'Đối thủ đã ngắt kết nối.');
         pingBadge.classList.add('hidden');
         if (pingInterval) clearInterval(pingInterval);
@@ -1588,11 +1609,177 @@ function connectWebSocketAndSend(initialMsg) {
     }
 }
 
+// ==========================================
+// THEO DÕI CHẤT LƯỢNG KẾT NỐI WEBRTC & GIẢM TRỄ (getStats)
+// ==========================================
+let statsMonitorInterval = null;
+let lastPacketsLost = 0;
+let lastPacketsTotal = 0;
+let consecutiveLossCount = 0;
+let autoDownscaleEnabled = localStorage.getItem('bvn_auto_downscale') !== 'false';
+
+// Checkbox cho phép người dùng bật/tắt tính năng tự động hạ preset khi lag
+const chkAutoDownscale = document.getElementById('chkAutoDownscale');
+if (chkAutoDownscale) {
+    chkAutoDownscale.checked = autoDownscaleEnabled;
+    chkAutoDownscale.addEventListener('change', (e) => {
+        autoDownscaleEnabled = e.target.checked;
+        localStorage.setItem('bvn_auto_downscale', autoDownscaleEnabled ? 'true' : 'false');
+    });
+}
+
 function startPingMeasurement() {
     if (pingInterval) clearInterval(pingInterval);
     pingInterval = setInterval(() => {
         sendFastMessage({ type: 'ping', time: Date.now() });
     }, 1000);
+    startStatsMonitoring();
+}
+
+function startStatsMonitoring() {
+    if (statsMonitorInterval) clearInterval(statsMonitorInterval);
+    lastPacketsLost = 0;
+    lastPacketsTotal = 0;
+    consecutiveLossCount = 0;
+
+    statsMonitorInterval = setInterval(async () => {
+        if (!peerConnection || peerConnection.connectionState !== 'connected') return;
+        try {
+            const stats = await peerConnection.getStats();
+            let rtt = null;
+            let packetsLost = 0;
+            let packetsTotal = 0;
+            let framesDropped = 0;
+            let jitterMs = 0;
+            let cpuLimitation = false;
+
+            stats.forEach(report => {
+                // RTT từ candidate-pair đang hoạt động
+                if (report.type === 'candidate-pair' && (report.state === 'succeeded' || report.nominated) && typeof report.currentRoundTripTime === 'number') {
+                    rtt = Math.round(report.currentRoundTripTime * 1000);
+                }
+                // Host kiểm tra mức tải CPU
+                if (report.type === 'outbound-rtp' && report.kind === 'video') {
+                    if (report.qualityLimitationReason === 'cpu') {
+                        cpuLimitation = true;
+                    }
+                    if (typeof report.packetsSent === 'number') {
+                        packetsTotal += report.packetsSent;
+                    }
+                }
+                // Guest kiểm tra thống kê inbound
+                if (report.type === 'inbound-rtp' && report.kind === 'video') {
+                    if (typeof report.packetsLost === 'number') packetsLost = report.packetsLost;
+                    if (typeof report.packetsReceived === 'number') packetsTotal = report.packetsReceived + packetsLost;
+                    if (typeof report.framesDropped === 'number') framesDropped = report.framesDropped;
+                    if (typeof report.jitter === 'number') jitterMs = Math.round(report.jitter * 1000);
+                }
+                // Host đọc remote-inbound-rtp để nắm tình trạng mạng phía Khách
+                if (report.type === 'remote-inbound-rtp' && report.kind === 'video') {
+                    if (typeof report.packetsLost === 'number') packetsLost = report.packetsLost;
+                    if (typeof report.jitter === 'number') jitterMs = Math.round(report.jitter * 1000);
+                    if (typeof report.roundTripTime === 'number' && rtt === null) {
+                        rtt = Math.round(report.roundTripTime * 1000);
+                    }
+                }
+            });
+
+            // Tính tỷ lệ mất gói trong 2 giây vừa qua
+            let lossPercent = 0;
+            if (packetsTotal > lastPacketsTotal) {
+                const deltaLost = Math.max(0, packetsLost - lastPacketsLost);
+                const deltaTotal = packetsTotal - lastPacketsTotal;
+                lossPercent = Math.min(100, Math.round((deltaLost / deltaTotal) * 100));
+            }
+            lastPacketsLost = packetsLost;
+            lastPacketsTotal = packetsTotal;
+
+            updateNetworkQualityBadge({
+                rtt,
+                lossPercent,
+                framesDropped,
+                jitterMs,
+                cpuLimitation
+            });
+
+            // Tự động hạ preset nếu mất gói liên tục trong 10 giây (5 lần kiểm tra liên tiếp)
+            if (lossPercent >= 4) {
+                consecutiveLossCount++;
+                if (consecutiveLossCount >= 5 && autoDownscaleEnabled) {
+                    consecutiveLossCount = 0;
+                    handleAutoDownscalePreset();
+                }
+            } else {
+                consecutiveLossCount = Math.max(0, consecutiveLossCount - 1);
+            }
+        } catch (e) {
+            console.warn("Lỗi đọc WebRTC getStats:", e);
+        }
+    }, 2000);
+}
+
+function stopStatsMonitoring() {
+    if (statsMonitorInterval) {
+        clearInterval(statsMonitorInterval);
+        statsMonitorInterval = null;
+    }
+}
+
+function updateNetworkQualityBadge({ rtt, lossPercent, framesDropped, jitterMs, cpuLimitation }) {
+    if (!pingBadge) return;
+    pingBadge.classList.remove('hidden');
+
+    const pingDisplay = rtt !== null ? rtt : (pingVal?.innerText || '--');
+    if (pingVal && rtt !== null) pingVal.innerText = pingDisplay;
+
+    const netStatsExtra = document.getElementById('netStatsExtra');
+    let extraText = '';
+    if (lossPercent > 0) {
+        extraText += ` • Loss: ${lossPercent}%`;
+    }
+    if (jitterMs > 10) {
+        extraText += ` • Jitter: ${jitterMs}ms`;
+    }
+    if (netStatsExtra) {
+        netStatsExtra.innerText = extraText;
+    }
+
+    // Đổi màu badge: Xanh, Vàng, Đỏ
+    pingBadge.classList.remove('good', 'warning', 'bad');
+    const numericPing = parseInt(pingDisplay, 10) || 0;
+
+    if (cpuLimitation) {
+        pingBadge.classList.add('bad');
+        showSyncNotification("⚠️ Máy Host đang quá tải (CPU)! Giảm bớt ứng dụng nền hoặc hạ preset stream.", 4000);
+    } else if (lossPercent > 5 || numericPing > 150) {
+        pingBadge.classList.add('bad');
+        if (lossPercent > 5 && currentStreamQuality !== 'smooth') {
+            showSyncNotification("⚠️ Mạng mất gói cao! Gợi ý đổi sang preset Siêu mượt (2.5 Mbps).", 3000);
+        }
+    } else if (lossPercent > 1 || numericPing > 65 || jitterMs > 25) {
+        pingBadge.classList.add('warning');
+    } else {
+        pingBadge.classList.add('good');
+    }
+}
+
+async function handleAutoDownscalePreset() {
+    let nextPresetKey = null;
+    if (currentStreamQuality === 'ultra') {
+        nextPresetKey = 'balanced';
+    } else if (currentStreamQuality === 'balanced') {
+        nextPresetKey = 'smooth';
+    } else {
+        return;
+    }
+    currentStreamQuality = nextPresetKey;
+    localStorage.setItem('bvn_stream_quality', currentStreamQuality);
+    if (streamQualitySelect) streamQualitySelect.value = currentStreamQuality;
+    if (activeVideoSender) {
+        await tuneVideoSenderForLowLatency(activeVideoSender);
+    }
+    const preset = STREAM_QUALITY_PRESETS[currentStreamQuality];
+    showSyncNotification(`⚠️ Mạng yếu liên tục: Đã tự động hạ sang ${preset.label} để chống lag!`, 4000);
 }
 
 // Nút Đồng bộ lại / Khởi động lại

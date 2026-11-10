@@ -121,13 +121,69 @@ body {
 }
 
 .ping-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
     background: rgba(0, 255, 136, 0.15);
     border: 1px solid var(--success-green);
     color: var(--success-green);
-    padding: 2px 8px;
+    padding: 3px 10px;
     border-radius: 12px;
     font-size: 0.85rem;
     font-family: var(--font-heading);
+    transition: all 0.25s ease;
+}
+
+.ping-badge.good {
+    background: rgba(46, 213, 115, 0.15);
+    border-color: #2ed573;
+    color: #2ed573;
+}
+
+.ping-badge.warning {
+    background: rgba(255, 170, 0, 0.18);
+    border-color: #ffaa00;
+    color: #ffaa00;
+}
+
+.ping-badge.bad {
+    background: rgba(255, 71, 87, 0.22);
+    border-color: #ff4757;
+    color: #ff4757;
+    box-shadow: 0 0 10px rgba(255, 71, 87, 0.35);
+}
+
+.net-dot {
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: currentColor;
+    box-shadow: 0 0 6px currentColor;
+}
+
+.net-stats-extra {
+    font-size: 0.78rem;
+    opacity: 0.92;
+    margin-left: 2px;
+}
+
+.auto-downscale-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.76rem;
+    color: #8892b0;
+    cursor: pointer;
+    user-select: none;
+    margin-left: 6px;
+    border-left: 1px solid rgba(255, 255, 255, 0.12);
+    padding-left: 8px;
+}
+
+.auto-downscale-toggle input {
+    cursor: pointer;
+    accent-color: var(--naruto-orange);
 }
 
 /* Game Screen */
