@@ -52,23 +52,29 @@ const PEER_CONFIG = {
 // ==========================================
 const STREAM_QUALITY_PRESETS = {
     smooth: {
-        label: '⚡ Siêu mượt 30FPS (Khuyên dùng)',
-        maxBitrate: 3500000, // 3.5 Mbps: Cực nhẹ cho mạng, giữ vững 30 FPS
-        maxKbps: 3500,
+        label: '⚡ Siêu mượt (2.5 Mbps)',
+        maxBitrate: 2500000, // 2.5 Mbps: Nhẹ cho mạng, chống nghẽn và delay
+        maxKbps: 2500,
+        startKbps: 1500,     // 1.5 Mbps: Bắt đầu truyền ngay mà không làm nghẽn kết nối
+        minKbps: 600,        // 600 kbps: Cho phép hạ sâu khi mạng yếu để giữ độ trễ thấp
         framerate: 30,
-        degradationPreference: 'maintain-framerate'
+        degradationPreference: 'maintain-framerate' // Ưu tiên giữ vững 30 FPS, hạ độ nét khi mạng yếu
     },
     balanced: {
-        label: '💎 Cân bằng HD 30FPS',
-        maxBitrate: 5500000, // 5.5 Mbps: Nét đẹp chuẩn HD
-        maxKbps: 5500,
+        label: '💎 Cân bằng HD (4.0 Mbps)',
+        maxBitrate: 4000000, // 4.0 Mbps: Chuẩn HD sắc nét cho 1200x800 @ 30FPS
+        maxKbps: 4000,
+        startKbps: 2000,     // 2.0 Mbps
+        minKbps: 700,        // 700 kbps
         framerate: 30,
         degradationPreference: 'maintain-framerate'
     },
     ultra: {
-        label: '👑 Siêu nét HD (30FPS)',
-        maxBitrate: 9000000, // 9.0 Mbps: Cho mạng LAN / cáp quang mạnh
-        maxKbps: 9000,
+        label: '👑 Siêu nét HD (6.0 Mbps)',
+        maxBitrate: 6000000, // 6.0 Mbps: Cho mạng LAN / cáp quang mạnh
+        maxKbps: 6000,
+        startKbps: 2500,     // 2.5 Mbps
+        minKbps: 800,        // 800 kbps
         framerate: 30,
         degradationPreference: 'maintain-framerate'
     }
@@ -669,14 +675,19 @@ function dispatchFlashKeyEvent(type, flashKeyInfo) {
 // 5. WEBRTC 60FPS HD CANVAS STREAMING ENGINE
 // ==========================================
 
-// Tối ưu bitrate SDP theo preset được chọn (mặc định ~3.5 - 5.5 Mbps cực kỳ mượt mà)
+// Tối ưu bitrate SDP theo preset được chọn (smooth: 2.5 Mbps, balanced: 4.0 Mbps, ultra: 6.0 Mbps)
 function boostSdpBitrate(sdp, maxKbps) {
-    if (!maxKbps) {
-        const preset = STREAM_QUALITY_PRESETS[currentStreamQuality] || STREAM_QUALITY_PRESETS.smooth;
+    let preset = STREAM_QUALITY_PRESETS[currentStreamQuality] || STREAM_QUALITY_PRESETS.smooth;
+    if (maxKbps) {
+        const matched = Object.values(STREAM_QUALITY_PRESETS).find(p => p.maxKbps === maxKbps);
+        if (matched) preset = matched;
+    } else {
         maxKbps = preset.maxKbps;
     }
-    const minKbps = Math.min(2500, Math.floor(maxKbps * 0.6));
-    const startKbps = Math.min(4500, maxKbps);
+    // Hạ min-bitrate xuống khoảng 600-800 kbps để encoder hạ được khi mạng yếu, chống nghẽn và phình delay
+    const minKbps = preset.minKbps || 600;
+    // Giữ start-bitrate hợp lý (1500 - 2500 kbps) để vào trận lập tức mà không gây nghẽn kết nối
+    const startKbps = preset.startKbps || Math.min(2000, maxKbps);
 
     let lines = sdp.split('\r\n');
     let mVideoIndex = lines.findIndex(l => l.startsWith('m=video'));
@@ -684,7 +695,7 @@ function boostSdpBitrate(sdp, maxKbps) {
         lines.splice(mVideoIndex + 1, 0, `b=AS:${maxKbps}`, `b=TIAS:${maxKbps * 1000}`);
     }
 
-    // Bơm min-bitrate và start-bitrate: Vào trận nét căng ngay lập tức, không đợi thăm dò
+    // Bơm min-bitrate, start-bitrate và max-bitrate: Vào trận nét ổn định, linh hoạt hạ bitrate khi mạng lag
     lines = lines.map(line => {
         if (line.startsWith('a=fmtp:') && (line.includes('packetization-mode') || line.includes('profile-level-id') || line.includes('apt='))) {
             if (!line.includes('x-google-min-bitrate')) {
