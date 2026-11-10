@@ -1066,6 +1066,155 @@ async function handleWebRtcCandidate(candidate) {
 }
 
 // ==========================================
+// 6. ĐỒNG BỘ TRẠNG THÁI PHÍM P2 (STATE-BASED INPUT SYNC - CHỐNG KẸT PHÍM)
+// ==========================================
+const P2_INPUT_BITS = {
+    UP:     1 << 0,  // 1
+    DOWN:   1 << 1,  // 2
+    LEFT:   1 << 2,  // 4
+    RIGHT:  1 << 3,  // 8
+    ATTACK: 1 << 4,  // 16
+    JUMP:   1 << 5,  // 32
+    DASH:   1 << 6,  // 64
+    SUB:    1 << 7,  // 128
+    ULTI:   1 << 8,  // 256
+    ASSIST: 1 << 9,  // 512
+    ENTER:  1 << 10  // 1024
+};
+
+// Phía Khách (Guest - P2)
+let guestP2StateMask = 0;
+let guestInputSequence = 0;
+let guestStateTickInterval = null;
+
+function setGuestKeyAction(action, isDown) {
+    if (!P2_INPUT_BITS[action]) return;
+    const bit = P2_INPUT_BITS[action];
+    const prevMask = guestP2StateMask;
+    if (isDown) {
+        guestP2StateMask |= bit;
+    } else {
+        guestP2StateMask &= ~bit;
+    }
+    // Gửi ngay lập tức khi trạng thái thay đổi
+    if (guestP2StateMask !== prevMask) {
+        sendGuestP2State();
+    }
+}
+
+function sendGuestP2State() {
+    guestInputSequence++;
+    sendFastMessage({
+        type: 'p2_input_state',
+        mask: guestP2StateMask,
+        seq: guestInputSequence
+    });
+}
+
+function startGuestStateSender() {
+    if (guestStateTickInterval) clearInterval(guestStateTickInterval);
+    // Gửi định kỳ mỗi 20ms (~50 lần/giây, nằm trong khoảng 16-33ms)
+    guestStateTickInterval = setInterval(() => {
+        if (myRole === 'guest') {
+            sendGuestP2State();
+        }
+    }, 20);
+}
+
+function stopGuestStateSender() {
+    if (guestStateTickInterval) {
+        clearInterval(guestStateTickInterval);
+        guestStateTickInterval = null;
+    }
+    guestP2StateMask = 0;
+}
+
+// Khi mất focus cửa sổ (Alt-Tab, click ngoài), lập tức nhả phím
+window.addEventListener('blur', () => {
+    if (myRole === 'guest' && guestP2StateMask !== 0) {
+        guestP2StateMask = 0;
+        sendGuestP2State();
+    }
+});
+
+// Phía Chủ phòng (Host - P1)
+let hostLastP2Mask = 0;
+let hostLastP2PacketTime = 0;
+let hostP2WatchdogInterval = null;
+
+function handleHostP2State(data) {
+    if (myRole !== 'host') return;
+    const newMask = typeof data.mask === 'number' ? data.mask : 0;
+    hostLastP2PacketTime = Date.now();
+
+    // Tính chênh lệch trạng thái (diff) so với gói trước
+    const changed = newMask ^ hostLastP2Mask;
+    if (changed !== 0) {
+        for (const [action, bit] of Object.entries(P2_INPUT_BITS)) {
+            if (changed & bit) {
+                const isDown = (newMask & bit) !== 0;
+                const eventType = isDown ? 'keydown' : 'keyup';
+
+                if (action === 'ENTER') {
+                    const enterKey = { code: 'Enter', key: 'Enter', keyCode: 13, which: 13 };
+                    dispatchFlashKeyEvent(eventType, enterKey);
+                } else {
+                    const nativeKey = FLASH_NATIVE_KEYS.p2[action];
+                    if (nativeKey) {
+                        dispatchFlashKeyEvent(eventType, nativeKey);
+                    }
+                }
+
+                // Cập nhật đèn báo HUD phím P2 trên Host
+                if (action !== 'ENTER') {
+                    updateInputHud('p2', action, isDown);
+                }
+            }
+        }
+        hostLastP2Mask = newMask;
+    }
+}
+
+// Cơ chế an toàn Watchdog: nếu Host không nhận được gói nào từ Khách quá 300ms thì tự động nhả phím
+function startHostP2Watchdog() {
+    if (hostP2WatchdogInterval) clearInterval(hostP2WatchdogInterval);
+    hostP2WatchdogInterval = setInterval(() => {
+        if (myRole === 'host' && hostLastP2Mask !== 0) {
+            if (Date.now() - hostLastP2PacketTime > 300) {
+                console.warn("[Host Watchdog] Quá 300ms không nhận gói từ Khách -> Tự động nhả toàn bộ phím P2!");
+                releaseAllP2Keys();
+            }
+        }
+    }, 50);
+}
+
+function stopHostP2Watchdog() {
+    if (hostP2WatchdogInterval) {
+        clearInterval(hostP2WatchdogInterval);
+        hostP2WatchdogInterval = null;
+    }
+    releaseAllP2Keys();
+}
+
+function releaseAllP2Keys() {
+    if (hostLastP2Mask === 0) return;
+    for (const [action, bit] of Object.entries(P2_INPUT_BITS)) {
+        if (hostLastP2Mask & bit) {
+            if (action === 'ENTER') {
+                dispatchFlashKeyEvent('keyup', { code: 'Enter', key: 'Enter', keyCode: 13, which: 13 });
+            } else {
+                const nativeKey = FLASH_NATIVE_KEYS.p2[action];
+                if (nativeKey) {
+                    dispatchFlashKeyEvent('keyup', nativeKey);
+                }
+                updateInputHud('p2', action, false);
+            }
+        }
+    }
+    hostLastP2Mask = 0;
+}
+
+// ==========================================
 // 6. XỬ LÝ PHÍM & TỰ ĐỘNG CHUYỂN NÚT (KEY TRANSLATION)
 // ==========================================
 
@@ -1121,17 +1270,8 @@ function handleUserKeyEvent(e, eventType) {
 
         if (myRole === 'guest') {
             updateInputHud('p2', 'ATTACK', isKeyDown);
-            sendFastMessage({
-                type: 'game_input',
-                role: 'p2',
-                action: 'ATTACK',
-                eventType: eventType
-            });
-            sendFastMessage({
-                type: 'raw_flash_key',
-                keyInfo: rawKey,
-                eventType: eventType
-            });
+            setGuestKeyAction('ATTACK', isKeyDown);
+            setGuestKeyAction('ENTER', isKeyDown);
         } else {
             updateInputHud('p1', 'ATTACK', isKeyDown);
             dispatchFlashKeyEvent(eventType, FLASH_NATIVE_KEYS.p1.ATTACK);
@@ -1181,12 +1321,7 @@ function handleUserKeyEvent(e, eventType) {
             swallow();
             if (e.repeat) return;
             updateInputHud('p2', action, isKeyDown);
-            sendFastMessage({
-                type: 'game_input',
-                role: 'p2',
-                action: action,
-                eventType: eventType
-            });
+            setGuestKeyAction(action, isKeyDown);
             return;
         }
     }
@@ -1259,12 +1394,14 @@ function handleNetworkMessage(data) {
         startPingMeasurement();
 
         if (myRole === 'host') {
-            updateStatus('connected', `🟢 BẠN LÀ P1 (HOST): Đang phát trực tiếp 60FPS HD cho Khách!`);
+            updateStatus('connected', `🟢 BẠN LÀ P1 (HOST): Đang phát trực tiếp 30FPS HD cho Khách!`);
             showSyncNotification("🎮 Đã kết nối với Khách! Host bấm S (xuống) chọn 'Vs Human' ➔ bấm Enter để cùng chọn tướng đấu 2 người!");
+            startHostP2Watchdog();
             setTimeout(setupHostWebRtc, 500);
         } else {
-            updateStatus('connected', `🟢 BẠN LÀ P2 (KHÁCH): Đang xem trực tiếp 60FPS HD từ Host!`);
-            showSyncNotification("🟢 Đã kết nối với Chủ phòng (60FPS HD)! Bạn đang điều khiển P2. Sẵn sàng!");
+            updateStatus('connected', `🟢 BẠN LÀ P2 (KHÁCH): Đang xem trực tiếp 30FPS HD từ Host!`);
+            showSyncNotification("🟢 Đã kết nối với Chủ phòng (30FPS HD)! Bạn đang điều khiển P2. Sẵn sàng!");
+            startGuestStateSender();
             setupGuestWebRtc();
         }
         return;
@@ -1284,7 +1421,13 @@ function handleNetworkMessage(data) {
         return;
     }
 
-    // 5. Host nhận phím bấm từ Guest trong chế độ Remote Play
+    // 5. Host nhận gói trạng thái phím P2 liên tục (state-based mask) chống kẹt phím
+    if (data.type === 'p2_input_state') {
+        handleHostP2State(data);
+        return;
+    }
+
+    // Fallback: Host nhận phím bấm dạng event nếu bên kia gửi kiểu cũ
     if (data.type === 'game_input') {
         // Cập nhật đèn báo phím P2 trên HUD của cả 2 máy
         updateInputHud('p2', data.action === 'MENU_CONFIRM' ? 'ATTACK' : data.action, data.eventType === 'keydown');
@@ -1330,6 +1473,8 @@ function handleNetworkMessage(data) {
 
     // 8. Đối thủ ngắt kết nối
     if (data.type === 'peer_disconnected') {
+        stopHostP2Watchdog();
+        stopGuestStateSender();
         updateStatus('waiting', 'Đối thủ đã ngắt kết nối.');
         pingBadge.classList.add('hidden');
         if (pingInterval) clearInterval(pingInterval);
@@ -1939,17 +2084,8 @@ function dispatchActionFromGamepad(targetRole, action, isDown) {
         const rawKey = { code: 'Enter', key: 'Enter', keyCode: 13, which: 13 };
         if (targetRole === 'p2' && myRole === 'guest') {
             updateInputHud('p2', 'ATTACK', isDown);
-            sendFastMessage({
-                type: 'game_input',
-                role: 'p2',
-                action: 'ATTACK',
-                eventType: eventType
-            });
-            sendFastMessage({
-                type: 'raw_flash_key',
-                keyInfo: rawKey,
-                eventType: eventType
-            });
+            setGuestKeyAction('ATTACK', isDown);
+            setGuestKeyAction('ENTER', isDown);
         } else {
             updateInputHud(targetRole, 'ATTACK', isDown);
             dispatchFlashKeyEvent(eventType, FLASH_NATIVE_KEYS[targetRole].ATTACK);
@@ -1981,12 +2117,7 @@ function dispatchActionFromGamepad(targetRole, action, isDown) {
     } else if (targetRole === 'p2') {
         updateInputHud('p2', action, isDown);
         if (myRole === 'guest') {
-            sendFastMessage({
-                type: 'game_input',
-                role: 'p2',
-                action: action,
-                eventType: eventType
-            });
+            setGuestKeyAction(action, isDown);
         } else {
             dispatchFlashKeyEvent(eventType, FLASH_NATIVE_KEYS.p2[action]);
         }
@@ -2253,32 +2384,10 @@ function setupVirtualControls() {
             e.preventDefault();
             btn.classList.add('vbtn-active');
             if (myRole === 'guest') {
-                if (currentNetcodeMode === 'esport') {
-                    dispatchFlashKeyEvent('keydown', FLASH_NATIVE_KEYS.p2[keyAction]);
-                    sendFastMessage({
-                        type: 'sync_input',
-                        role: 'p2',
-                        action: keyAction,
-                        eventType: 'keydown'
-                    });
-                } else {
-                    sendFastMessage({
-                        type: 'game_input',
-                        role: 'p2',
-                        action: keyAction,
-                        eventType: 'keydown'
-                    });
-                }
+                updateInputHud('p2', keyAction, true);
+                setGuestKeyAction(keyAction, true);
             } else {
                 dispatchFlashKeyEvent('keydown', FLASH_NATIVE_KEYS.p1[keyAction]);
-                if (currentNetcodeMode === 'esport' && myRole === 'host') {
-                    sendFastMessage({
-                        type: 'sync_input',
-                        role: 'p1',
-                        action: keyAction,
-                        eventType: 'keydown'
-                    });
-                }
             }
         };
 
@@ -2286,32 +2395,10 @@ function setupVirtualControls() {
             e.preventDefault();
             btn.classList.remove('vbtn-active');
             if (myRole === 'guest') {
-                if (currentNetcodeMode === 'esport') {
-                    dispatchFlashKeyEvent('keyup', FLASH_NATIVE_KEYS.p2[keyAction]);
-                    sendFastMessage({
-                        type: 'sync_input',
-                        role: 'p2',
-                        action: keyAction,
-                        eventType: 'keyup'
-                    });
-                } else {
-                    sendFastMessage({
-                        type: 'game_input',
-                        role: 'p2',
-                        action: keyAction,
-                        eventType: 'keyup'
-                    });
-                }
+                updateInputHud('p2', keyAction, false);
+                setGuestKeyAction(keyAction, false);
             } else {
                 dispatchFlashKeyEvent('keyup', FLASH_NATIVE_KEYS.p1[keyAction]);
-                if (currentNetcodeMode === 'esport' && myRole === 'host') {
-                    sendFastMessage({
-                        type: 'sync_input',
-                        role: 'p1',
-                        action: keyAction,
-                        eventType: 'keyup'
-                    });
-                }
             }
         };
 
