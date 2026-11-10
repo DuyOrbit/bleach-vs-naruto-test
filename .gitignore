@@ -13,6 +13,9 @@ inspect_*.js
 !screenshots/
 !screenshots/*.png
 
+# Configuration with private credentials
+config.js
+
 # Raw / Decompiled archives
 bvn2.6sieuvip/
 BleachVsNaruto-master/

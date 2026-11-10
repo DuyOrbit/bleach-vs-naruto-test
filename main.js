@@ -31,19 +31,56 @@
     }
 })();
 
+// ==========================================
+// CẤU HÌNH WEBRTC & ICE SERVERS (STUN / TURN RELAY)
+// ==========================================
+const DEFAULT_STUN_SERVERS = [
+    // Cloudflare STUN có máy chủ đặt tại Việt Nam (Hà Nội & TP.HCM), ping cực thấp
+    { urls: 'stun:stun.cloudflare.com:3478' },
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'stun:stun2.l.google.com:19302' },
+    { urls: 'stun:global.stun.twilio.com:3478' }
+];
+
+function getIceServers() {
+    const servers = [...DEFAULT_STUN_SERVERS];
+    let customTurn = null;
+
+    // 1. Nạp từ biến toàn cục window.BVN_TURN_CONFIG (từ file config.js hoặc nhúng ngoài)
+    if (window.BVN_TURN_CONFIG && (Array.isArray(window.BVN_TURN_CONFIG) ? window.BVN_TURN_CONFIG.length > 0 : true)) {
+        customTurn = window.BVN_TURN_CONFIG;
+    }
+    // 2. Nạp từ localStorage nếu người dùng cấu hình trực tiếp trên máy
+    else {
+        try {
+            const stored = localStorage.getItem('bvn_turn_config');
+            if (stored) {
+                customTurn = JSON.parse(stored);
+            }
+        } catch (_) {}
+    }
+
+    if (customTurn) {
+        if (Array.isArray(customTurn)) {
+            servers.push(...customTurn);
+        } else if (typeof customTurn === 'object') {
+            servers.push(customTurn);
+        }
+        console.log(`[WebRTC] Đã tích hợp cấu hình TURN Server Relay thành công.`);
+    }
+
+    return servers;
+}
+
 const PEER_CONFIG = {
-    config: {
-        iceServers: [
-            // Cloudflare STUN có máy chủ đặt tại Việt Nam (Hà Nội & TP.HCM), ping cực thấp
-            { urls: 'stun:stun.cloudflare.com:3478' },
-            { urls: 'stun:stun.l.google.com:19302' },
-            { urls: 'stun:stun1.l.google.com:19302' },
-            { urls: 'stun:stun2.l.google.com:19302' },
-            { urls: 'stun:global.stun.twilio.com:3478' }
-        ],
-        iceCandidatePoolSize: 10,
-        bundlePolicy: 'max-bundle', // Gom toàn bộ Audio/Video/Input vào 1 kết nối UDP duy nhất để giảm jitter và độ trễ
-        rtcpMuxPolicy: 'require'
+    get config() {
+        return {
+            iceServers: getIceServers(),
+            iceCandidatePoolSize: 10,
+            bundlePolicy: 'max-bundle', // Gom toàn bộ Audio/Video/Input vào 1 kết nối UDP duy nhất để giảm jitter và độ trễ
+            rtcpMuxPolicy: 'require'
+        };
     }
 };
 
