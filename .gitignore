@@ -16,6 +16,10 @@ inspect_*.js
 # Configuration with private credentials
 config.js
 
+# Build artifacts & local tools
+dist/
+tools/
+
 # Raw / Decompiled archives
 bvn2.6sieuvip/
 BleachVsNaruto-master/
