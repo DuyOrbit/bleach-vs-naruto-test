@@ -48,28 +48,28 @@ const PEER_CONFIG = {
 };
 
 // ==========================================
-// CẤU HÌNH CHẤT LƯỢNG STREAM 60FPS
+// CẤU HÌNH CHẤT LƯỢNG STREAM 30FPS (Chuẩn khớp tốc độ khung hình gốc BVN 2.6)
 // ==========================================
 const STREAM_QUALITY_PRESETS = {
     smooth: {
-        label: '⚡ Siêu mượt 60FPS (Khuyên dùng)',
-        maxBitrate: 3500000, // 3.5 Mbps: Cực nhẹ cho mạng, giữ vững 60 FPS
+        label: '⚡ Siêu mượt 30FPS (Khuyên dùng)',
+        maxBitrate: 3500000, // 3.5 Mbps: Cực nhẹ cho mạng, giữ vững 30 FPS
         maxKbps: 3500,
-        framerate: 60,
+        framerate: 30,
         degradationPreference: 'maintain-framerate'
     },
     balanced: {
-        label: '💎 Cân bằng HD 60FPS',
+        label: '💎 Cân bằng HD 30FPS',
         maxBitrate: 5500000, // 5.5 Mbps: Nét đẹp chuẩn HD
         maxKbps: 5500,
-        framerate: 60,
+        framerate: 30,
         degradationPreference: 'maintain-framerate'
     },
     ultra: {
-        label: '👑 Siêu nét 1080p',
+        label: '👑 Siêu nét HD (30FPS)',
         maxBitrate: 9000000, // 9.0 Mbps: Cho mạng LAN / cáp quang mạnh
         maxKbps: 9000,
-        framerate: 60,
+        framerate: 30,
         degradationPreference: 'maintain-framerate'
     }
 };
@@ -569,7 +569,43 @@ function findRuffleCanvas(player) {
         console.log("Đã tìm thấy Canvas của game:", ruffleCanvas);
         ruffleCanvas.setAttribute('tabindex', '0');
         ruffleCanvas.focus();
+        setupCanvasResizeObserver();
     }
+}
+
+// Giám sát kích thước canvas và sự kiện fullscreen để tự động tinh chỉnh scaleResolutionDownBy
+let canvasResizeObserverInitialized = false;
+let resizeTuneTimeout = null;
+
+function onHostViewChanged() {
+    if (!activeVideoSender) return;
+    clearTimeout(resizeTuneTimeout);
+    resizeTuneTimeout = setTimeout(() => {
+        if (activeVideoSender) {
+            tuneVideoSenderForLowLatency(activeVideoSender);
+        }
+    }, 150);
+}
+
+function setupCanvasResizeObserver() {
+    if (canvasResizeObserverInitialized) return;
+    canvasResizeObserverInitialized = true;
+
+    if (window.ResizeObserver) {
+        const observer = new ResizeObserver(() => {
+            onHostViewChanged();
+        });
+        if (ruffleCanvas) {
+            observer.observe(ruffleCanvas);
+        }
+        const container = document.getElementById('gameContainer');
+        if (container) {
+            observer.observe(container);
+        }
+    }
+    document.addEventListener('fullscreenchange', onHostViewChanged);
+    document.addEventListener('webkitfullscreenchange', onHostViewChanged);
+    window.addEventListener('resize', onHostViewChanged);
 }
 
 const gameContainer = document.getElementById('gameContainer');
@@ -722,11 +758,13 @@ async function setupHostWebRtc() {
 
     if (ruffleCanvas && ruffleCanvas.captureStream) {
         try {
-            const canvasStream = ruffleCanvas.captureStream(60);
+            setupCanvasResizeObserver();
+            // Capture đúng 30 FPS khớp với frame rate chuẩn của Flash SWF (30 FPS)
+            const canvasStream = ruffleCanvas.captureStream(30);
             const videoTrack = canvasStream.getVideoTracks()[0];
             if (videoTrack) {
                 if ('contentHint' in videoTrack) {
-                    // 'motion': Tối ưu chuyển động mượt mà 60 FPS độ trễ thấp cho game đối kháng
+                    // 'motion': Tối ưu chuyển động mượt mà độ trễ thấp cho game đối kháng
                     videoTrack.contentHint = 'motion';
                 }
             }
@@ -748,7 +786,7 @@ async function setupHostWebRtc() {
                     videoSender = sender;
                     activeVideoSender = sender;
                 }
-                console.log(`Host: Đã thêm ${track.kind} Track 60FPS vào WebRTC.`);
+                console.log(`Host: Đã thêm ${track.kind} Track 30FPS vào WebRTC.`);
             });
         } catch (e) {
             console.error("Lỗi captureStream từ ruffleCanvas:", e);
@@ -770,7 +808,8 @@ async function setupHostWebRtc() {
         console.log("Host PeerConnection state:", peerConnection.connectionState);
         if (peerConnection.connectionState === 'connected') {
             const preset = STREAM_QUALITY_PRESETS[currentStreamQuality] || STREAM_QUALITY_PRESETS.smooth;
-            showSyncNotification(`🟢 Đã kết nối P2P 60FPS mượt mà (${preset.label}) cho Khách!`);
+            showSyncNotification(`🟢 Đã kết nối P2P 30FPS mượt mà (${preset.label}) cho Khách!`);
+            if (videoSender) tuneVideoSenderForLowLatency(videoSender);
         }
     };
 
@@ -790,24 +829,30 @@ async function setupHostWebRtc() {
     }
 }
 
-// Cấu hình bộ mã hóa video: duy trì 60 FPS mượt mà tuyệt đối (maintain-framerate),
-// tối ưu bitrate linh hoạt theo preset để không bao giờ bị nghẽn mạng
+// Cấu hình bộ mã hóa video: duy trì 30 FPS mượt mà tuyệt đối (khớp frame rate 30 FPS của game.swf),
+// giới hạn độ phân giải tối đa ~1200px chiều ngang (2x stage gốc 600x400) để không quá tải encoder
 async function tuneVideoSenderForLowLatency(sender) {
     if (!sender) return;
     try {
         const preset = STREAM_QUALITY_PRESETS[currentStreamQuality] || STREAM_QUALITY_PRESETS.smooth;
         const params = sender.getParameters();
         if (!params.encodings || params.encodings.length === 0) params.encodings = [{}];
-        // Không hạ độ phân giải (scale = 1.0)
-        params.encodings[0].scaleResolutionDownBy = 1.0;
-        params.encodings[0].maxFramerate = preset.framerate;
+
+        // Giới hạn độ phân giải video gửi đi ở mức tối đa ~1200px chiều ngang (2x stage 600x400),
+        // bất kể màn hình Host là 1080p, 1440p, 4K hay đang phóng to fullscreen
+        const curWidth = (ruffleCanvas && ruffleCanvas.width) ? ruffleCanvas.width : 1200;
+        const targetMaxWidth = 1200;
+        const scale = curWidth > targetMaxWidth ? Math.max(1.0, curWidth / targetMaxWidth) : 1.0;
+
+        params.encodings[0].scaleResolutionDownBy = scale;
+        params.encodings[0].maxFramerate = preset.framerate; // 30 FPS
         params.encodings[0].maxBitrate = preset.maxBitrate;
         params.encodings[0].priority = 'high';
         params.encodings[0].networkPriority = 'high';
-        // QUAN TRỌNG: maintain-framerate để LUÔN GIỮ 60 FPS, không bao giờ được phép drop khung hình!
+        // maintain-framerate để luôn giữ 30 FPS ổn định, không giật cục
         params.degradationPreference = preset.degradationPreference;
         await sender.setParameters(params);
-        console.log(`Host: Encoder tuned: 60FPS maintain-framerate, maxBitrate: ${preset.maxBitrate / 1000}kbps`);
+        console.log(`Host: Encoder tuned: 30FPS maintain-framerate, maxBitrate: ${preset.maxBitrate / 1000}kbps, scale: ${scale.toFixed(2)} (gửi: ~${Math.round(curWidth / scale)}px)`);
     } catch (e) {
         console.warn("Không thể tinh chỉnh encoder:", e);
     }
