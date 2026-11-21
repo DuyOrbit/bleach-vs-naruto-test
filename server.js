@@ -170,30 +170,53 @@ wss.on('connection', (ws) => {
     });
 });
 
-// 5. Phục vụ file tĩnh với Cache-Control 30 ngày (SWF, WASM, JS, CSS, ảnh)
-app.use(express.static(path.join(__dirname, '.'), {
-    dotfiles: 'ignore',
-    index: ['index.html'],
-    maxAge: '30d',
-    setHeaders: (res, filePath) => {
-        // Tệp HTML: Cập nhật nhanh để người dùng luôn nhận bản mới nhất
-        if (filePath.endsWith('.html')) {
-            res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate');
+// 5. Phục vụ file tĩnh (SWF, WASM, JS, CSS, ảnh)
+const staticDirs = [process.cwd(), __dirname];
+staticDirs.forEach(dir => {
+    app.use(express.static(dir, {
+        dotfiles: 'ignore',
+        index: ['index.html'],
+        setHeaders: (res, filePath) => {
+            if (filePath.endsWith('.html')) {
+                res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate');
+            } else if (filePath.match(/\.(swf|wasm|mp3|wav|ogg|png|jpg|jpeg|gif|webp|svg|ico)$/i)) {
+                res.setHeader('Cache-Control', 'public, max-age=2592000, immutable');
+            } else if (filePath.match(/\.(js|css)$/i)) {
+                res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate');
+            }
         }
-        // File game nặng (Flash SWF, WASM Ruffle, Audio MP3, Hình ảnh): Cache 30 ngày (immutable)
-        else if (filePath.match(/\.(swf|wasm|mp3|wav|ogg|png|jpg|jpeg|gif|webp|svg|ico)$/i)) {
-            res.setHeader('Cache-Control', 'public, max-age=2592000, immutable');
-        }
-        // File logic JS & CSS: Cache 1 ngày
-        else if (filePath.match(/\.(js|css)$/i)) {
-            res.setHeader('Cache-Control', 'public, max-age=86400');
-        }
-    }
-}));
+    }));
+});
 
-// Điều hướng tất cả request về index.html
+// Route tường minh cho style.css để đảm bảo 100% trả về text/css đúng chuẩn (khử lỗi Vercel)
+app.get('/style.css', (req, res) => {
+    res.setHeader('Content-Type', 'text/css; charset=UTF-8');
+    res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate');
+    const cssPath = path.join(process.cwd(), 'style.css');
+    res.sendFile(cssPath, (err) => {
+        if (err) res.sendFile(path.join(__dirname, 'style.css'));
+    });
+});
+
+// Route tường minh cho main.js
+app.get('/main.js', (req, res) => {
+    res.setHeader('Content-Type', 'application/javascript; charset=UTF-8');
+    res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate');
+    const jsPath = path.join(process.cwd(), 'main.js');
+    res.sendFile(jsPath, (err) => {
+        if (err) res.sendFile(path.join(__dirname, 'main.js'));
+    });
+});
+
+// Điều hướng trang về index.html (chỉ áp dụng cho trang web, KHÔNG bắt nhầm file tĩnh .css, .js, .swf)
 app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, 'index.html'));
+    if (req.path.match(/\.[a-zA-Z0-9]+$/)) {
+        return res.status(404).send('Static file not found: ' + req.path);
+    }
+    const htmlPath = path.join(process.cwd(), 'index.html');
+    res.sendFile(htmlPath, (err) => {
+        if (err) res.sendFile(path.join(__dirname, 'index.html'));
+    });
 });
 
 // Xử lý lỗi an toàn
