@@ -753,7 +753,7 @@ async function initRuffleGame() {
             splashScreen: false,
             backgroundExecutionMode: "mainThread",
             allowScriptAccess: true,
-            allowNetworking: isAnimeBattle ? "all" : "internal",
+            allowNetworking: "all",
             openUrlMode: isAnimeBattle ? "deny" : "allow",
             base: baseStaticUrl
         };
@@ -777,7 +777,7 @@ async function initRuffleGame() {
             url: swfUrl,
             autoplay: "on",
             allowScriptAccess: true,
-            allowNetworking: isAnimeBattle ? "all" : "internal"
+            allowNetworking: "all"
         };
         if (isAnimeBattle && editionConfig.parameters) {
             loadParams.parameters = editionConfig.parameters;
@@ -4396,7 +4396,7 @@ function launchMatchNow() {
 
     closeBanPickModal();
     focusGame();
-    showSyncNotification(`⏳ Đang tự động chọn tướng & trợ thủ vào trận: ${findRosterItem(bpState.p1.fighter).name} vs ${findRosterItem(bpState.p2.fighter).name}...`, 9000);
+    showSyncNotification(`⚔️ ĐÃ VÀO TRẬN ĐẤU: ${findRosterItem(bpState.p1.fighter).name} vs ${findRosterItem(bpState.p2.fighter).name}!`);
 }
 
 if (btnLaunchMatch) {
