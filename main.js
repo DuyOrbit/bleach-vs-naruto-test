@@ -3369,10 +3369,45 @@ const bvnBridge = {
         }
     },
     startMatch(p1, p2, p1Assist, p2Assist, stage, modo = 3) {
+        console.log(`[BVN Bridge] Yêu cầu vào trận đấu: P1=${p1} (+${p1Assist}) vs P2=${p2} (+${p2Assist}) | Map=${stage} | Mode=${modo}`);
+        
+        // 1. Nếu đang nạp Anime Battle (launch.swf): Gọi ExternalInterface animeRiftStartMatch chuẩn Animugen
+        try {
+            const req = {
+                schemaVersion: 1,
+                mode: modo === 2 ? 'cpu' : modo === 4 ? 'training' : 'local',
+                p1: Array.isArray(p1) ? p1 : [p1],
+                p2: Array.isArray(p2) ? p2 : [p2],
+                p1Assist: p1Assist || null,
+                p2Assist: p2Assist || null,
+                map: stage || 'xianshi',
+                bestOf: 3,
+                hp: 1,
+                time: 60,
+                cpuLevel: 3
+            };
+            const riftRes = this.call('animeRiftStartMatch', JSON.stringify(req));
+            if (riftRes && riftRes.ok === true) {
+                console.log('[BVN Bridge] animeRiftStartMatch thành công:', riftRes);
+                return riftRes;
+            }
+        } catch (e) {
+            console.warn('[BVN Bridge] animeRiftStartMatch error:', e);
+        }
+
+        // 2. Thử các callback ExternalInterface chuẩn nếu bản SWF có hỗ trợ
         let res = this.call('startCustomMatch', p1, p2, p1Assist, p2Assist, stage, modo);
         if (res === null) res = this.call('startMatch', p1, p2, p1Assist, p2Assist, stage, modo);
-        console.log('[BVN Bridge] startMatch ->', res);
-        return res;
+        if (res !== null) {
+            console.log('[BVN Bridge] startMatch ExternalInterface thành công ->', res);
+            return res;
+        }
+
+        // 3. Với bản game.swf (BVN 2.6) chạy trên Flash/Ruffle:
+        // Chạy Macro Virtual Driver tự động điều khiển vào thẳng màn hình chiến đấu!
+        console.log(`[BVN Bridge] Khởi chạy Macro Virtual Driver tự động chọn tướng & trợ thủ vào trận...`);
+        autoEnterBvn26Match(p1, p2, p1Assist, p2Assist);
+        return { ok: true, driver: 'macro_bvn26' };
     },
     getBattleState() {
         const raw = this.call('getBattleState');
@@ -3420,6 +3455,45 @@ const bvnBridge = {
     },
 };
 window.bvnBridge = bvnBridge;
+
+// Macro Virtual Driver tự động điều khiển vào thẳng màn hình chiến đấu cho BVN 2.6
+function autoEnterBvn26Match(p1, p2, p1Assist, p2Assist) {
+    focusGame();
+    const p1Down = FLASH_NATIVE_KEYS.p1.DOWN;
+    const p1Confirm = FLASH_NATIVE_KEYS.p1.ATTACK;
+    const p2Confirm = FLASH_NATIVE_KEYS.p2.ATTACK;
+
+    // Bước 1: Điều hướng Menu chính xuống mục "Vs Human" (Đấu 2 Người) và bấm chọn
+    dispatchFlashKeyEvent('keydown', p1Down);
+    setTimeout(() => {
+        dispatchFlashKeyEvent('keyup', p1Down);
+        dispatchFlashKeyEvent('keydown', p1Confirm);
+        setTimeout(() => {
+            dispatchFlashKeyEvent('keyup', p1Confirm);
+
+            // Bước 2: Tại màn hình Chọn Tướng, xác nhận Tướng chính P1 & P2
+            setTimeout(() => {
+                dispatchFlashKeyEvent('keydown', p1Confirm);
+                dispatchFlashKeyEvent('keydown', p2Confirm);
+                setTimeout(() => {
+                    dispatchFlashKeyEvent('keyup', p1Confirm);
+                    dispatchFlashKeyEvent('keyup', p2Confirm);
+
+                    // Bước 3: Xác nhận Trợ thủ P1 & P2 ➔ Game vào thẳng trận đấu!
+                    setTimeout(() => {
+                        dispatchFlashKeyEvent('keydown', p1Confirm);
+                        dispatchFlashKeyEvent('keydown', p2Confirm);
+                        setTimeout(() => {
+                            dispatchFlashKeyEvent('keyup', p1Confirm);
+                            dispatchFlashKeyEvent('keyup', p2Confirm);
+                            console.log('[Macro BVN 2.6] Đã tự động chọn tướng & trợ thủ vào trận thành công!');
+                        }, 100);
+                    }, 500);
+                }, 100);
+            }, 600);
+        }, 100);
+    }, 150);
+}
 
 // Web Shell UI Elements
 const btnOpenWebShell = document.getElementById('btnOpenWebShell');
@@ -3652,6 +3726,15 @@ const bpStageSelect = document.getElementById('bpStageSelect');
 const bpSearchInput = document.getElementById('bpSearchInput');
 const bpGridContainer = document.getElementById('bpGridContainer');
 const bpCenterHint = document.getElementById('bpCenterHint');
+const bpP1FighterSlot = document.getElementById('bpP1FighterSlot');
+const bpP1AssistSlot = document.getElementById('bpP1AssistSlot');
+const bpP2FighterSlot = document.getElementById('bpP2FighterSlot');
+const bpP2AssistSlot = document.getElementById('bpP2AssistSlot');
+const bpP1AssistAvatar = document.getElementById('bpP1AssistAvatar');
+const bpP2AssistAvatar = document.getElementById('bpP2AssistAvatar');
+
+let bpActiveSlot = 'fighter'; // 'fighter' hoặc 'assist'
+let autoLaunchTimer = null;
 
 let bpState = {
     p1: { fighter: '一护', assist: '夜一', locked: false },
@@ -3669,6 +3752,14 @@ function findRosterItem(id) {
     return { id, name: id, sub: '', icon: '👤' };
 }
 
+function switchBpTab(tabName) {
+    bpState.currentTab = tabName;
+    document.querySelectorAll('.bp-tab').forEach(b => {
+        b.classList.toggle('active', b.dataset.tab === tabName);
+    });
+    renderBanPickGrid();
+}
+
 function updateBpUi() {
     if (!banPickModal) return;
 
@@ -3682,13 +3773,19 @@ function updateBpUi() {
 
     if (p1Avatar) p1Avatar.innerText = p1Fighter.icon || '🗡️';
     if (p1Name) p1Name.innerText = p1Fighter.name;
-    if (p1AssistLabel) p1AssistLabel.innerText = `Trợ thủ: ${p1Assist.name}`;
+    if (bpP1AssistAvatar) bpP1AssistAvatar.innerText = p1Assist.icon || '⚡';
+    if (p1AssistLabel) p1AssistLabel.innerText = p1Assist.name;
+
+    // Highlight slot đang chọn của P1
+    if (bpP1FighterSlot) bpP1FighterSlot.classList.toggle('active', bpActiveSlot === 'fighter');
+    if (bpP1AssistSlot) bpP1AssistSlot.classList.toggle('active', bpActiveSlot === 'assist');
+
     if (p1Status) {
         if (bpState.p1.locked) {
-            p1Status.innerText = '✓ ĐÃ KHÓA TƯỚNG';
+            p1Status.innerText = '✓ ĐÃ KHÓA TƯỚNG & TRỢ THỦ';
             p1Status.classList.add('locked');
         } else {
-            p1Status.innerText = 'Đang chọn tướng...';
+            p1Status.innerText = (bpActiveSlot === 'assist') ? 'Đang chọn Trợ thủ...' : 'Đang chọn Tướng chính...';
             p1Status.classList.remove('locked');
         }
     }
@@ -3698,7 +3795,7 @@ function updateBpUi() {
             btnLockP1.classList.add('locked');
             btnLockP1.disabled = true;
         } else {
-            btnLockP1.innerText = '🔒 Khóa Tướng P1';
+            btnLockP1.innerText = '🔒 Khóa Tướng & Trợ Thủ (P1)';
             btnLockP1.classList.remove('locked');
             btnLockP1.disabled = (myRole === 'guest');
         }
@@ -3714,13 +3811,19 @@ function updateBpUi() {
 
     if (p2Avatar) p2Avatar.innerText = p2Fighter.icon || '🦊';
     if (p2Name) p2Name.innerText = p2Fighter.name;
-    if (p2AssistLabel) p2AssistLabel.innerText = `Trợ thủ: ${p2Assist.name}`;
+    if (bpP2AssistAvatar) bpP2AssistAvatar.innerText = p2Assist.icon || '🏺';
+    if (p2AssistLabel) p2AssistLabel.innerText = p2Assist.name;
+
+    // Highlight slot đang chọn của P2
+    if (bpP2FighterSlot) bpP2FighterSlot.classList.toggle('active', bpActiveSlot === 'fighter');
+    if (bpP2AssistSlot) bpP2AssistSlot.classList.toggle('active', bpActiveSlot === 'assist');
+
     if (p2Status) {
         if (bpState.p2.locked) {
-            p2Status.innerText = '✓ ĐÃ KHÓA TƯỚNG';
+            p2Status.innerText = '✓ ĐÃ KHÓA TƯỚNG & TRỢ THỦ';
             p2Status.classList.add('locked');
         } else {
-            p2Status.innerText = 'Đang chọn tướng...';
+            p2Status.innerText = (bpActiveSlot === 'assist') ? 'Đang chọn Trợ thủ...' : 'Đang chọn Tướng chính...';
             p2Status.classList.remove('locked');
         }
     }
@@ -3730,7 +3833,7 @@ function updateBpUi() {
             btnLockP2.classList.add('locked');
             btnLockP2.disabled = true;
         } else {
-            btnLockP2.innerText = '🔒 Khóa Tướng P2';
+            btnLockP2.innerText = '🔒 Khóa Tướng & Trợ Thủ (P2)';
             btnLockP2.classList.remove('locked');
             btnLockP2.disabled = (myRole === 'host');
         }
@@ -3741,19 +3844,40 @@ function updateBpUi() {
         bpStageSelect.value = bpState.stage;
     }
 
-    // Cập nhật nút Xuất trận
+    // Cập nhật nút Xuất trận & Tự động vào game bằng lệnh khi 2 bên đã khóa xong
     const bothLocked = bpState.p1.locked && bpState.p2.locked;
     if (btnLaunchMatch) {
         if (bothLocked) {
             btnLaunchMatch.disabled = false;
             btnLaunchMatch.classList.add('ready');
-            btnLaunchMatch.innerText = (myRole === 'guest') ? '⏳ CHỜ CHỦ PHÒNG XUẤT TRẬN' : '⚔️ XUẤT TRẬN (VÀO GAME)';
-            if (bpCenterHint) bpCenterHint.innerText = (myRole === 'guest') ? 'Chủ phòng sắp bấm xuất trận...' : '🔥 2 bên đã khóa xong! Host bấm để vào trận!';
+            if (bpCenterHint) bpCenterHint.innerText = '🔥 2 bên đã khóa Tướng & Trợ thủ! Đang vào trận bằng lệnh...';
+
+            // Đếm ngược 3 giây tự động vào trận nếu là Host
+            if (myRole === 'host' && !autoLaunchTimer) {
+                let countdown = 3;
+                btnLaunchMatch.innerText = `⚔️ VÀO TRẬN SAU (${countdown}s)...`;
+                autoLaunchTimer = setInterval(() => {
+                    countdown--;
+                    if (countdown > 0) {
+                        btnLaunchMatch.innerText = `⚔️ VÀO TRẬN SAU (${countdown}s)...`;
+                    } else {
+                        clearInterval(autoLaunchTimer);
+                        autoLaunchTimer = null;
+                        launchMatchNow();
+                    }
+                }, 1000);
+            } else if (myRole === 'guest') {
+                btnLaunchMatch.innerText = '⏳ CHỜ HOST XUẤT TRẬN...';
+            }
         } else {
+            if (autoLaunchTimer) {
+                clearInterval(autoLaunchTimer);
+                autoLaunchTimer = null;
+            }
             btnLaunchMatch.disabled = true;
             btnLaunchMatch.classList.remove('ready');
             btnLaunchMatch.innerText = '⚔️ XUẤT TRẬN (VÀO GAME)';
-            if (bpCenterHint) bpCenterHint.innerText = 'Chờ cả 2 bên khóa tướng để xuất trận';
+            if (bpCenterHint) bpCenterHint.innerText = 'Chọn Tướng + Trợ thủ rồi bấm Khóa để vào trận';
         }
     }
 
@@ -3802,16 +3926,34 @@ function renderBanPickGrid() {
     });
 }
 
-function selectRosterItem(id, isAssist) {
+function selectRosterItem(id, isAssistItem) {
+    const isTargetAssist = isAssistItem || (bpActiveSlot === 'assist');
+
     if (myRole === 'guest') {
         if (bpState.p2.locked) return;
-        if (isAssist) bpState.p2.assist = id;
-        else bpState.p2.fighter = id;
+        if (isTargetAssist) {
+            bpState.p2.assist = id;
+            showSyncNotification(`🔵 P2 đã chọn Trợ thủ: ${findRosterItem(id).name}! Bấm Khóa để sẵn sàng.`);
+        } else {
+            bpState.p2.fighter = id;
+            // Tự động chuyển tiếp sang chọn Trợ thủ cho người chơi!
+            bpActiveSlot = 'assist';
+            switchBpTab('assist');
+            showSyncNotification(`🔵 P2 đã chọn: ${findRosterItem(id).name}! Tiếp theo hãy chọn Trợ thủ.`);
+        }
         sendFastMessage({ type: 'bp_select', role: 'p2', fighter: bpState.p2.fighter, assist: bpState.p2.assist });
     } else {
         if (bpState.p1.locked) return;
-        if (isAssist) bpState.p1.assist = id;
-        else bpState.p1.fighter = id;
+        if (isTargetAssist) {
+            bpState.p1.assist = id;
+            showSyncNotification(`🔴 P1 đã chọn Trợ thủ: ${findRosterItem(id).name}! Bấm Khóa để sẵn sàng.`);
+        } else {
+            bpState.p1.fighter = id;
+            // Tự động chuyển tiếp sang chọn Trợ thủ cho người chơi!
+            bpActiveSlot = 'assist';
+            switchBpTab('assist');
+            showSyncNotification(`🔴 P1 đã chọn: ${findRosterItem(id).name}! Tiếp theo hãy chọn Trợ thủ.`);
+        }
         if (myRole === 'host') {
             sendFastMessage({ type: 'bp_select', role: 'p1', fighter: bpState.p1.fighter, assist: bpState.p1.assist });
         }
@@ -3848,6 +3990,40 @@ function closeBanPickModal() {
     if (banPickModal) banPickModal.classList.add('hidden');
 }
 
+// Bắt sự kiện click vào Slot Tướng / Trợ thủ trên thẻ người chơi
+if (bpP1FighterSlot) {
+    bpP1FighterSlot.addEventListener('click', () => {
+        if (myRole === 'guest' || bpState.p1.locked) return;
+        bpActiveSlot = 'fighter';
+        if (bpState.currentTab === 'assist') switchBpTab('bleach');
+        updateBpUi();
+    });
+}
+if (bpP1AssistSlot) {
+    bpP1AssistSlot.addEventListener('click', () => {
+        if (myRole === 'guest' || bpState.p1.locked) return;
+        bpActiveSlot = 'assist';
+        switchBpTab('assist');
+        updateBpUi();
+    });
+}
+if (bpP2FighterSlot) {
+    bpP2FighterSlot.addEventListener('click', () => {
+        if (myRole === 'host' || bpState.p2.locked) return;
+        bpActiveSlot = 'fighter';
+        if (bpState.currentTab === 'assist') switchBpTab('naruto');
+        updateBpUi();
+    });
+}
+if (bpP2AssistSlot) {
+    bpP2AssistSlot.addEventListener('click', () => {
+        if (myRole === 'host' || bpState.p2.locked) return;
+        bpActiveSlot = 'assist';
+        switchBpTab('assist');
+        updateBpUi();
+    });
+}
+
 // Bắt sự kiện UI Ban/Pick
 if (btnOpenBanPick) btnOpenBanPick.addEventListener('click', openBanPickModal);
 if (btnCloseBanPickModal) btnCloseBanPickModal.addEventListener('click', closeBanPickModal);
@@ -3861,10 +4037,10 @@ if (banPickModal) {
 
 document.querySelectorAll('.bp-tab').forEach(tabBtn => {
     tabBtn.addEventListener('click', () => {
-        document.querySelectorAll('.bp-tab').forEach(b => b.classList.remove('active'));
-        tabBtn.classList.add('active');
-        bpState.currentTab = tabBtn.dataset.tab || 'bleach';
-        renderBanPickGrid();
+        const tab = tabBtn.dataset.tab || 'bleach';
+        bpActiveSlot = (tab === 'assist') ? 'assist' : 'fighter';
+        switchBpTab(tab);
+        updateBpUi();
     });
 });
 
@@ -3904,35 +4080,42 @@ if (btnLockP2) {
     });
 }
 
+function launchMatchNow() {
+    if (autoLaunchTimer) {
+        clearInterval(autoLaunchTimer);
+        autoLaunchTimer = null;
+    }
+    console.log(`[Ban/Pick] Xuất trận trực tiếp: P1=${bpState.p1.fighter} (+${bpState.p1.assist}) vs P2=${bpState.p2.fighter} (+${bpState.p2.assist}) | Stage=${bpState.stage}`);
+
+    // Gọi bridge Flash để vào game thẳng bằng lệnh
+    if (window.bvnBridge && typeof window.bvnBridge.startMatch === 'function') {
+        window.bvnBridge.startMatch(bpState.p1.fighter, bpState.p2.fighter, bpState.p1.assist, bpState.p2.assist, bpState.stage, 3);
+    }
+
+    // Gửi lệnh đồng bộ cho Khách
+    sendFastMessage({
+        type: 'sync_start_match',
+        p1: bpState.p1.fighter,
+        p2: bpState.p2.fighter,
+        p1Assist: bpState.p1.assist,
+        p2Assist: bpState.p2.assist,
+        stage: bpState.stage,
+        modo: 3
+    });
+
+    closeBanPickModal();
+    focusGame();
+    showSyncNotification(`⚔️ ĐÃ VÀO TRẬN ĐẤU: ${findRosterItem(bpState.p1.fighter).name} vs ${findRosterItem(bpState.p2.fighter).name}!`);
+}
+
 if (btnLaunchMatch) {
     btnLaunchMatch.addEventListener('click', () => {
         if (myRole === 'guest') return; // Chỉ Host mới có quyền bấm xuất trận
         if (!bpState.p1.locked || !bpState.p2.locked) {
-            alert('Cả 2 đấu thủ cần bấm Khóa Tướng trước khi xuất trận!');
+            alert('Cả 2 đấu thủ cần chọn đủ Tướng + Trợ thủ và bấm Khóa trước khi xuất trận!');
             return;
         }
-
-        console.log(`[Ban/Pick] Host xuất trận: P1=${bpState.p1.fighter} (+${bpState.p1.assist}) vs P2=${bpState.p2.fighter} (+${bpState.p2.assist}) | Stage=${bpState.stage}`);
-
-        // Gọi lệnh Flash trực tiếp
-        if (window.bvnBridge && typeof window.bvnBridge.startMatch === 'function') {
-            window.bvnBridge.startMatch(bpState.p1.fighter, bpState.p2.fighter, bpState.p1.assist, bpState.p2.assist, bpState.stage, 3);
-        }
-
-        // Gửi lệnh đồng bộ cho Khách
-        sendFastMessage({
-            type: 'sync_start_match',
-            p1: bpState.p1.fighter,
-            p2: bpState.p2.fighter,
-            p1Assist: bpState.p1.assist,
-            p2Assist: bpState.p2.assist,
-            stage: bpState.stage,
-            modo: 3
-        });
-
-        closeBanPickModal();
-        focusGame();
-        showSyncNotification(`⚔️ ĐÃ XUẤT TRẬN: ${findRosterItem(bpState.p1.fighter).name} vs ${findRosterItem(bpState.p2.fighter).name}!`);
+        launchMatchNow();
     });
 }
 

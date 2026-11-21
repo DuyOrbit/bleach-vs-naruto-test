@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Bleach vs Naruto Online (P2P)</title>
-    <link rel="stylesheet" href="style.css?v=2.3">
+    <link rel="stylesheet" href="style.css?v=2.4">
     <!-- Font chữ & Icon -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -449,15 +449,24 @@
                         <!-- Thẻ P1 -->
                         <div class="bp-card bp-p1-card" id="bpP1Card">
                             <span class="bp-card-tag tag-p1">🔴 P1 (HOST)</span>
-                            <div class="bp-avatar-box">
-                                <div class="bp-avatar-circle" id="bpP1Avatar">🗡️</div>
+                            <div class="bp-selection-slots">
+                                <div class="bp-slot bp-slot-fighter active" id="bpP1FighterSlot" title="Bấm để chọn Tướng chính P1">
+                                    <div class="bp-slot-avatar" id="bpP1Avatar">🗡️</div>
+                                    <div class="bp-slot-meta">
+                                        <span class="bp-slot-label">TƯỚNG CHÍNH</span>
+                                        <span class="bp-name" id="bpP1Name">Ichigo (Kurosaki)</span>
+                                    </div>
+                                </div>
+                                <div class="bp-slot bp-slot-assist" id="bpP1AssistSlot" title="Bấm để chọn Trợ thủ P1">
+                                    <div class="bp-slot-avatar-sm" id="bpP1AssistAvatar">⚡</div>
+                                    <div class="bp-slot-meta">
+                                        <span class="bp-slot-label">TRỢ THỦ (ASSIST)</span>
+                                        <span class="bp-assist-label" id="bpP1AssistLabel">Yoruichi (夜一)</span>
+                                    </div>
+                                </div>
                             </div>
-                            <div class="bp-info">
-                                <span class="bp-name" id="bpP1Name">Ichigo (Kurosaki)</span>
-                                <span class="bp-assist-label" id="bpP1AssistLabel">Trợ thủ: Yoruichi (夜一)</span>
-                                <span class="bp-ready-badge" id="bpP1Status">Đang chọn tướng...</span>
-                            </div>
-                            <button id="btnLockP1" class="bp-lock-btn btn-lock-p1">🔒 Khóa Tướng P1</button>
+                            <span class="bp-ready-badge" id="bpP1Status">Đang chọn tướng...</span>
+                            <button id="btnLockP1" class="bp-lock-btn btn-lock-p1">🔒 Khóa Tướng & Trợ Thủ (P1)</button>
                         </div>
 
                         <!-- Cột VS & Map -->
@@ -483,15 +492,24 @@
                         <!-- Thẻ P2 -->
                         <div class="bp-card bp-p2-card" id="bpP2Card">
                             <span class="bp-card-tag tag-p2">🔵 P2 (KHÁCH)</span>
-                            <div class="bp-avatar-box">
-                                <div class="bp-avatar-circle" id="bpP2Avatar">🦊</div>
+                            <div class="bp-selection-slots">
+                                <div class="bp-slot bp-slot-fighter active" id="bpP2FighterSlot" title="Bấm để chọn Tướng chính P2">
+                                    <div class="bp-slot-avatar" id="bpP2Avatar">🦊</div>
+                                    <div class="bp-slot-meta">
+                                        <span class="bp-slot-label">TƯỚNG CHÍNH</span>
+                                        <span class="bp-name" id="bpP2Name">Naruto Uzumaki</span>
+                                    </div>
+                                </div>
+                                <div class="bp-slot bp-slot-assist" id="bpP2AssistSlot" title="Bấm để chọn Trợ thủ P2">
+                                    <div class="bp-slot-avatar-sm" id="bpP2AssistAvatar">🏺</div>
+                                    <div class="bp-slot-meta">
+                                        <span class="bp-slot-label">TRỢ THỦ (ASSIST)</span>
+                                        <span class="bp-assist-label" id="bpP2AssistLabel">Gaara (我爱罗)</span>
+                                    </div>
+                                </div>
                             </div>
-                            <div class="bp-info">
-                                <span class="bp-name" id="bpP2Name">Naruto Uzumaki</span>
-                                <span class="bp-assist-label" id="bpP2AssistLabel">Trợ thủ: Gaara (我爱罗)</span>
-                                <span class="bp-ready-badge" id="bpP2Status">Đang chọn tướng...</span>
-                            </div>
-                            <button id="btnLockP2" class="bp-lock-btn btn-lock-p2">🔒 Khóa Tướng P2</button>
+                            <span class="bp-ready-badge" id="bpP2Status">Đang chọn tướng...</span>
+                            <button id="btnLockP2" class="bp-lock-btn btn-lock-p2">🔒 Khóa Tướng & Trợ Thủ (P2)</button>
                         </div>
                     </div>
 
@@ -865,6 +883,6 @@
 
     <!-- File cấu hình TURN Server tùy chọn (nếu có) -->
     <script src="config.js"></script>
-    <script src="main.js?v=2.3"></script>
+    <script src="main.js?v=2.4"></script>
 </body>
 </html>
