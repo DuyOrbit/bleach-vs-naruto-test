@@ -70,8 +70,8 @@
                     <div class="netcode-selector-wrapper" title="Chọn chế độ kết nối Online">
                         <label for="netplayModeSelect" class="netplay-mode-label">Mạng:</label>
                         <select id="netplayModeSelect" class="netplay-mode-select">
-                            <option value="input_sync" selected>⚡ P2P Input Sync (Siêu nhẹ • 0 MB Video • Chuẩn Animugen)</option>
-                            <option value="stream">📺 Remote Play (Stream Video 30FPS • 1 Trận Chung)</option>
+                            <option value="stream" selected>📺 Remote Play (Stream Video 30FPS • 1 Trận Chung • Khuyên dùng)</option>
+                            <option value="input_sync">⚡ P2P Input Sync (Siêu nhẹ • 0 MB Video • Chuẩn Animugen)</option>
                         </select>
                     </div>
                     <button id="btnGamepadStatus" class="btn-gamepad-badge" title="Nhấp để kiểm tra & cài đặt phím tay cầm (Gamepad)">
@@ -116,7 +116,7 @@
                 <div class="alert-icon">🔥</div>
                 <div class="alert-content">
                     <span class="alert-title">HƯỚNG DẪN ĐẤU 2 NGƯỜI (BVN 2.6):</span>
-                    <span class="alert-desc">Tại Menu chính, Host bấm <strong>S</strong> (xuống) chọn <span class="badge-highlight">Vs Human (Đấu 2 Người)</span> ➔ bấm <strong>Enter</strong> (hoặc <strong>J</strong>) để vào Chọn Tướng! Khách (P2) dùng <strong>4 Mũi tên (↑ ↓ ← →)</strong> di chuyển và <strong>Numpad 1</strong> (hoặc số 1) để chọn tướng!</span>
+                    <span class="alert-desc">Tại Menu chính, Host bấm <strong>S</strong> (xuống) chọn <span class="badge-highlight">Vs Human (Đấu 2 Người)</span> ➔ bấm <strong>Enter</strong> (hoặc <strong>J</strong>) để vào Chọn Tướng! Khách (P2) dùng <strong>4 Mũi tên (↑ ↓ ← →)</strong> di chuyển và phím <strong>J</strong> (hoặc Numpad 1) để chọn tướng!</span>
                 </div>
             </div>
 
@@ -267,7 +267,7 @@
                         <!-- Render động qua JS -->
                     </div>
                     <div class="numpad-tip">
-                        💡 <em>Khách (P2) mặc định chơi bằng <strong>4 phím Mũi tên (↑ ↓ ← →)</strong> và <strong>Numpad 1..6</strong> (hoặc hàng phím số 1..6).</em>
+                        💡 <em>Khách (P2) mặc định chơi bằng <strong>4 phím Mũi tên (↑ ↓ ← →)</strong> và bộ phím chữ <strong>J, K, L, U, I, O</strong> (hoặc Numpad 1..6, có thể tự chỉnh trong "Cài Đặt Phím").</em>
                     </div>
                 </div>
             </section>
@@ -334,14 +334,16 @@
                         <button class="tab-btn tab-btn-gamepad" data-tab="tabGamepad">🎮 Cài Đặt Tay Cầm (Gamepad)</button>
                     </div>
 
-                    <!-- Chọn Preset bàn phím nhanh: 4 Option (Ẩn khi xem tab Tay cầm) -->
+                    <!-- Chọn Preset bàn phím nhanh (Ẩn khi xem tab Tay cầm) -->
                     <div class="preset-selector" id="keyboardPresetSelector">
-                        <label for="presetSelect"><strong>Chọn kiểu phím bàn phím:</strong></label>
+                        <label for="presetSelect"><strong>Chọn kiểu phím nhanh:</strong></label>
                         <select id="presetSelect" class="form-select">
-                            <option value="option_arrows">🎯 Option 1: Bộ 4 Mũi tên & Numpad (↑ ↓ ← → + Numpad 1..6) - Chuẩn Flash</option>
-                            <option value="option_wasd">🎮 Option 2: Bộ phím WASD (W A S D + J K L U I O) - Chuẩn P1</option>
-                            <option value="option_laptop">💻 Option 3: Bộ phím Laptop (IJKL di chuyển + ZXCVBN ra đòn)</option>
-                            <option value="option_custom">✏️ Option 4: Tự map phím theo ý thích (Custom cá nhân)</option>
+                            <option value="option_arrows_letters">🎯 Kiểu 1: 4 Mũi tên (↑ ↓ ← →) + Đánh CHỮ (J K L U I O) - Khuyên dùng Laptop</option>
+                            <option value="option_wasd">🎮 Kiểu 2: Bộ phím CHỮ (W A S D + J K L U I O) - Chuẩn Game Đối Kháng</option>
+                            <option value="option_arrows">🔢 Kiểu 3: 4 Mũi tên (↑ ↓ ← →) + Bàn phím số Numpad 1..6</option>
+                            <option value="option_arrows_digits">⌨️ Kiểu 4: 4 Mũi tên (↑ ↓ ← →) + Phím số 1 2 3 4 5 6 hàng trên</option>
+                            <option value="option_laptop">💻 Kiểu 5: Bộ phím Laptop (I J K L + Z X C V B N)</option>
+                            <option value="option_custom">✏️ Kiểu 6: Tự chỉnh phím tùy thích (Bấm đổi chữ hay số tự do)</option>
                         </select>
                     </div>
 

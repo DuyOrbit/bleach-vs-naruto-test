@@ -126,6 +126,19 @@ let activeVideoSender = null;
 // Flash Game Bleach vs Naruto 2.6 cố định nhận:
 // - P1 Native: WASD (Di chuyển) + J (Đánh/Chọn) + K (Nhảy/Hủy) + L (Lướt) + U (Chiêu phụ) + I (Ulti) + O (Trợ thủ)
 // - P2 Native: 4 Mũi tên (Di chuyển) + Numpad 1 (Đánh) + Numpad 2 (Nhảy) + Numpad 3 (Lướt) + Numpad 4 (Chiêu phụ) + Numpad 5 (Ulti) + Numpad 6 (Trợ thủ)
+const ACTION_LABELS = {
+    UP:     'Di chuyển: Lên (↑ / Nhảy trèo)',
+    DOWN:   'Di chuyển: Xuống (↓ / Ngồi đỡ)',
+    LEFT:   'Di chuyển: Trái (← / Lùi tiến)',
+    RIGHT:  'Di chuyển: Phải (→ / Tiến lùi)',
+    ATTACK: 'Tấn công / Đánh thường / Chọn',
+    JUMP:   'Nhảy lên / Hủy bỏ Menu',
+    DASH:   'Lướt né đòn (Dash)',
+    SUB:    'Chiêu phụ (Sub Skill)',
+    ULTI:   'Tuyệt kỹ Ulti (Special)',
+    ASSIST: 'Gọi trợ thủ (Assist)'
+};
+
 const FLASH_NATIVE_KEYS = {
     p1: {
         UP:     { code: 'KeyW', key: 'w', keyCode: 87, label: 'Lên (Nhảy / Trèo)' },
@@ -140,13 +153,13 @@ const FLASH_NATIVE_KEYS = {
         ASSIST: { code: 'KeyO', key: 'o', keyCode: 79, label: 'Gọi hỗ trợ (O)' }
     },
     p2: {
-        UP:     { code: 'ArrowUp', key: 'ArrowUp', keyCode: 38, label: 'Lên (Mũi tên lên)' },
-        DOWN:   { code: 'ArrowDown', key: 'ArrowDown', keyCode: 40, label: 'Xuống (Mũi tên xuống)' },
-        LEFT:   { code: 'ArrowLeft', key: 'ArrowLeft', keyCode: 37, label: 'Trái (Mũi tên trái)' },
-        RIGHT:  { code: 'ArrowRight', key: 'ArrowRight', keyCode: 39, label: 'Phải (Mũi tên phải)' },
-        ATTACK: { code: 'Numpad1', key: '1', keyCode: 97, label: 'Đánh / Chọn (Numpad 1)' },
-        JUMP:   { code: 'Numpad2', key: '2', keyCode: 98, label: 'Nhảy / Hủy (Numpad 2)' },
-        DASH:   { code: 'Numpad3', key: '3', keyCode: 99, label: 'Lướt / Né (Numpad 3)' },
+        UP:     { code: 'ArrowUp', key: 'ArrowUp', keyCode: 38, label: 'Lên (↑)' },
+        DOWN:   { code: 'ArrowDown', key: 'ArrowDown', keyCode: 40, label: 'Xuống (↓)' },
+        LEFT:   { code: 'ArrowLeft', key: 'ArrowLeft', keyCode: 37, label: 'Trái (←)' },
+        RIGHT:  { code: 'ArrowRight', key: 'ArrowRight', keyCode: 39, label: 'Phải (→)' },
+        ATTACK: { code: 'Numpad1', key: '1', keyCode: 97, label: 'Tấn công (Numpad 1)' },
+        JUMP:   { code: 'Numpad2', key: '2', keyCode: 98, label: 'Nhảy (Numpad 2)' },
+        DASH:   { code: 'Numpad3', key: '3', keyCode: 99, label: 'Lướt né (Numpad 3)' },
         SUB:    { code: 'Numpad4', key: '4', keyCode: 100, label: 'Chiêu phụ (Numpad 4)' },
         ULTI:   { code: 'Numpad5', key: '5', keyCode: 101, label: 'Tuyệt kỹ Ulti (Numpad 5)' },
         ASSIST: { code: 'Numpad6', key: '6', keyCode: 102, label: 'Gọi hỗ trợ (Numpad 6)' }
@@ -157,20 +170,20 @@ const FLASH_NATIVE_KEYS = {
 // 2. CÁC OPTION ĐIỀU KHIỂN CHO NGƯỜI DÙNG
 // ==========================================
 const KEY_PRESETS = {
-    // Option 1: Bộ phím 4 Mũi tên & Numpad (↑ ↓ ← → di chuyển + Numpad 1..6 ra đòn, hỗ trợ phím số 1..6)
-    option_arrows: {
+    // Kiểu 1: 4 Mũi tên + Đánh CHỮ JKLUIO (100% đánh bằng chữ, tối ưu nhất cho Laptop không có phím số)
+    option_arrows_letters: {
         UP:     { code: 'ArrowUp', display: '↑' },
         DOWN:   { code: 'ArrowDown', display: '↓' },
         LEFT:   { code: 'ArrowLeft', display: '←' },
         RIGHT:  { code: 'ArrowRight', display: '→' },
-        ATTACK: { code: 'Numpad1', display: 'Num 1' },
-        JUMP:   { code: 'Numpad2', display: 'Num 2' },
-        DASH:   { code: 'Numpad3', display: 'Num 3' },
-        SUB:    { code: 'Numpad4', display: 'Num 4' },
-        ULTI:   { code: 'Numpad5', display: 'Num 5' },
-        ASSIST: { code: 'Numpad6', display: 'Num 6' }
+        ATTACK: { code: 'KeyJ', display: 'J' },
+        JUMP:   { code: 'KeyK', display: 'K' },
+        DASH:   { code: 'KeyL', display: 'L' },
+        SUB:    { code: 'KeyU', display: 'U' },
+        ULTI:   { code: 'KeyI', display: 'I' },
+        ASSIST: { code: 'KeyO', display: 'O' }
     },
-    // Option 2: Bộ phím WASD (W A S D + J K L U I O)
+    // Kiểu 2: Bộ phím CHỮ WASD + JKLUIO (Chuẩn đối kháng 100% Chữ)
     option_wasd: {
         UP:     { code: 'KeyW', display: 'W' },
         DOWN:   { code: 'KeyS', display: 'S' },
@@ -183,7 +196,33 @@ const KEY_PRESETS = {
         ULTI:   { code: 'KeyI', display: 'I' },
         ASSIST: { code: 'KeyO', display: 'O' }
     },
-    // Option 3: Bộ phím Laptop (IJKL di chuyển + ZXCVBN ra đòn)
+    // Kiểu 3: 4 Mũi tên & Numpad (↑ ↓ ← → di chuyển + Numpad 1..6 ra đòn)
+    option_arrows: {
+        UP:     { code: 'ArrowUp', display: '↑' },
+        DOWN:   { code: 'ArrowDown', display: '↓' },
+        LEFT:   { code: 'ArrowLeft', display: '←' },
+        RIGHT:  { code: 'ArrowRight', display: '→' },
+        ATTACK: { code: 'Numpad1', display: 'Num 1' },
+        JUMP:   { code: 'Numpad2', display: 'Num 2' },
+        DASH:   { code: 'Numpad3', display: 'Num 3' },
+        SUB:    { code: 'Numpad4', display: 'Num 4' },
+        ULTI:   { code: 'Numpad5', display: 'Num 5' },
+        ASSIST: { code: 'Numpad6', display: 'Num 6' }
+    },
+    // Kiểu 4: 4 Mũi tên & Phím số 1..6 hàng trên
+    option_arrows_digits: {
+        UP:     { code: 'ArrowUp', display: '↑' },
+        DOWN:   { code: 'ArrowDown', display: '↓' },
+        LEFT:   { code: 'ArrowLeft', display: '←' },
+        RIGHT:  { code: 'ArrowRight', display: '→' },
+        ATTACK: { code: 'Digit1', display: 'Số 1' },
+        JUMP:   { code: 'Digit2', display: 'Số 2' },
+        DASH:   { code: 'Digit3', display: 'Số 3' },
+        SUB:    { code: 'Digit4', display: 'Số 4' },
+        ULTI:   { code: 'Digit5', display: 'Số 5' },
+        ASSIST: { code: 'Digit6', display: 'Số 6' }
+    },
+    // Kiểu 5: Bộ phím Laptop (IJKL di chuyển + ZXCVBN ra đòn)
     option_laptop: {
         UP:     { code: 'KeyI', display: 'I' },
         DOWN:   { code: 'KeyK', display: 'K' },
@@ -324,7 +363,7 @@ function saveGamepadConfig(cfg) {
 let userKeyBindings = loadKeyBindings();
 
 function loadKeyBindings() {
-    const saved = localStorage.getItem('bvn_user_keybindings_v4');
+    const saved = localStorage.getItem('bvn_user_keybindings_v5');
     if (saved) {
         try {
             return JSON.parse(saved);
@@ -332,18 +371,20 @@ function loadKeyBindings() {
             console.error("Lỗi parse saved bindings:", e);
         }
     }
-    // Mặc định chuẩn xác: P1 dùng WASD, P2 dùng 4 Mũi tên + Numpad 1..6 (với số 1..6 là fallback)
+    // Mặc định chuẩn xác:
+    // - P1: WASD + JKLUIO (Chuẩn đối kháng)
+    // - P2: 4 Mũi tên (↑ ↓ ← →) + Đánh CHỮ (J K L U I O) (100% Chữ, tối ưu cho Laptop!)
     return {
         p1Preset: 'option_wasd',
-        p2Preset: 'option_arrows',
+        p2Preset: 'option_arrows_letters',
         p1: JSON.parse(JSON.stringify(KEY_PRESETS.option_wasd)),
-        p2: JSON.parse(JSON.stringify(KEY_PRESETS.option_arrows))
+        p2: JSON.parse(JSON.stringify(KEY_PRESETS.option_arrows_letters))
     };
 }
 
 function saveKeyBindings(bindings) {
     userKeyBindings = bindings;
-    localStorage.setItem('bvn_user_keybindings_v4', JSON.stringify(bindings));
+    localStorage.setItem('bvn_user_keybindings_v5', JSON.stringify(bindings));
     renderGuides();
     syncHudKeyLabels();
 }
@@ -381,7 +422,7 @@ function syncHudKeyLabels() {
 let socket = null;
 let peerConnection = null;
 let myRole = 'solo'; // 'solo' | 'host' | 'guest'
-let currentNetcodeMode = localStorage.getItem('bvn_netcode_mode') || 'input_sync'; // 'input_sync' (0 MB Video) | 'stream' (Remote Play)
+let currentNetcodeMode = localStorage.getItem('bvn_netcode_mode') || 'stream'; // 'stream' (Remote Play) | 'input_sync' (0 MB Video)
 let rufflePlayer = null;
 let ruffleCanvas = null;
 let pingInterval = null;
@@ -656,6 +697,9 @@ async function initRuffleGame() {
                 try { window.bvnBridge.skipIntro(); } catch (e) {}
             }
             focusGame();
+            if (myRole === 'host') {
+                sendFastMessage({ type: 'sync_skip_to_menu' });
+            }
         };
 
         if (btnSkipIntro) btnSkipIntro.onclick = hideIntroOverlay;
@@ -1627,6 +1671,11 @@ function handleUserKeyEvent(e, eventType) {
             if (myRole === 'host' && currentNetcodeMode === 'input_sync') {
                 setHostP1KeyAction('ATTACK', isKeyDown);
                 setHostP1KeyAction('ENTER', isKeyDown);
+                sendFastMessage({
+                    type: 'raw_flash_key',
+                    eventType,
+                    keyInfo: rawKey
+                });
             }
             sendFastMessage({
                 type: 'hud_key',
@@ -1649,6 +1698,11 @@ function handleUserKeyEvent(e, eventType) {
             dispatchFlashKeyEvent(eventType, FLASH_NATIVE_KEYS.p1[actionP1]);
             if (currentNetcodeMode === 'input_sync') {
                 setHostP1KeyAction(actionP1, isKeyDown);
+                sendFastMessage({
+                    type: 'raw_flash_key',
+                    eventType,
+                    keyInfo: FLASH_NATIVE_KEYS.p1[actionP1]
+                });
             }
             sendFastMessage({
                 type: 'hud_key',
@@ -1754,6 +1808,7 @@ function handleNetworkMessage(data) {
 
         if (myRole === 'host') {
             sendFastMessage({ type: 'sync_mode', mode: currentNetcodeMode });
+            sendFastMessage({ type: 'sync_skip_to_menu' });
             if (currentNetcodeMode === 'input_sync') {
                 updateStatus('connected', `⚡ BẠN LÀ P1 (HOST): P2P Input Sync (0 MB Video) cùng Khách!`);
                 showSyncNotification("⚡ Đã kết nối P2P Input Sync! Hai máy chạy độc lập siêu nhẹ 60FPS không tốn mạng.");
@@ -1873,7 +1928,17 @@ function handleNetworkMessage(data) {
         return;
     }
 
-    if (data.type === 'raw_flash_key' && myRole === 'host') {
+    // Đồng bộ chuyển thẳng vào Menu chính giữa 2 máy
+    if (data.type === 'sync_skip_to_menu') {
+        if (window.bvnBridge && typeof window.bvnBridge.skipIntro === 'function') {
+            try { window.bvnBridge.skipIntro(); } catch (e) {}
+        }
+        if (loadingOverlay) loadingOverlay.classList.add('hidden');
+        focusGame();
+        return;
+    }
+
+    if (data.type === 'raw_flash_key') {
         if (data.keyInfo) {
             dispatchFlashKeyEvent(data.eventType, data.keyInfo);
         }
@@ -2462,17 +2527,9 @@ tabButtons.forEach(btn => {
 // Thay đổi Preset trong dropdown bàn phím
 presetSelect.addEventListener('change', (e) => {
     const selected = e.target.value;
-    if (selected === 'option_laptop') {
-        tempBindings[editingKeyGroup] = JSON.parse(JSON.stringify(KEY_PRESETS.option_laptop));
-        tempBindings[editingKeyGroup + 'Preset'] = 'option_laptop';
-        renderModalBindings();
-    } else if (selected === 'option_wasd') {
-        tempBindings[editingKeyGroup] = JSON.parse(JSON.stringify(KEY_PRESETS.option_wasd));
-        tempBindings[editingKeyGroup + 'Preset'] = 'option_wasd';
-        renderModalBindings();
-    } else if (selected === 'option_arrows') {
-        tempBindings[editingKeyGroup] = JSON.parse(JSON.stringify(KEY_PRESETS.option_arrows));
-        tempBindings[editingKeyGroup + 'Preset'] = 'option_arrows';
+    if (KEY_PRESETS[selected]) {
+        tempBindings[editingKeyGroup] = JSON.parse(JSON.stringify(KEY_PRESETS[selected]));
+        tempBindings[editingKeyGroup + 'Preset'] = selected;
         renderModalBindings();
     } else {
         tempBindings[editingKeyGroup + 'Preset'] = 'option_custom';
@@ -2522,7 +2579,7 @@ function renderBindingGroupList(group, container) {
 
         const label = document.createElement('span');
         label.className = 'binding-label';
-        label.innerText = nativeInfo.label;
+        label.innerText = ACTION_LABELS[action] || nativeInfo.label;
 
         const btn = document.createElement('button');
         btn.className = 'bind-key-btn';
@@ -2662,12 +2719,12 @@ btnResetDefaultKeys.addEventListener('click', () => {
             renderGamepadBindings();
         }
     } else {
-        if (confirm("Khôi phục về mặc định chuẩn: P1 dùng WASD, P2 dùng 4 Mũi tên + Numpad 1..6?")) {
+        if (confirm("Khôi phục về mặc định chuẩn: P1 dùng WASD + JKLUIO, P2 dùng 4 Mũi tên + Chữ JKLUIO?")) {
             tempBindings = {
                 p1Preset: 'option_wasd',
-                p2Preset: 'option_arrows',
+                p2Preset: 'option_arrows_letters',
                 p1: JSON.parse(JSON.stringify(KEY_PRESETS.option_wasd)),
-                p2: JSON.parse(JSON.stringify(KEY_PRESETS.option_arrows))
+                p2: JSON.parse(JSON.stringify(KEY_PRESETS.option_arrows_letters))
             };
             if (presetSelect) presetSelect.value = tempBindings[editingKeyGroup + 'Preset'];
             renderModalBindings();
@@ -3020,7 +3077,8 @@ function renderGuideList(userGroup, nativeGroup, container) {
     const combatActions = ['ATTACK', 'JUMP', 'DASH', 'SUB', 'ULTI', 'ASSIST'];
     combatActions.forEach(act => {
         const div = document.createElement('div');
-        div.innerHTML = `<kbd>${userGroup[act].display}</kbd><span>${nativeGroup[act].label}</span>`;
+        const labelText = ACTION_LABELS[act] || nativeGroup[act].label;
+        div.innerHTML = `<kbd>${userGroup[act].display}</kbd><span>${labelText}</span>`;
         container.appendChild(div);
     });
 
