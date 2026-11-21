@@ -447,7 +447,7 @@ const EDITIONS = {
     }
 };
 
-let currentEdition = localStorage.getItem('bvn_game_edition') || 'bvn26';
+let currentEdition = localStorage.getItem('bvn_game_edition') || 'animebattle';
 
 let socket = null;
 let peerConnection = null;
@@ -655,7 +655,16 @@ if (gameEditionSelect) {
             localStorage.setItem('bvn_game_edition', currentEdition);
             const ed = EDITIONS[currentEdition];
             showSyncNotification(`🔄 Đang chuyển sang ${ed.name}...`);
-            initRuffleGame();
+            if (currentEdition === 'animebattle' && window.TceamHub) {
+                if (typeof stopTceamNetplay === 'function') stopTceamNetplay();
+                if (loadingOverlay) loadingOverlay.classList.add('hidden');
+                const btnBack = document.getElementById('btnBackToHub');
+                if (btnBack) btnBack.classList.add('hidden');
+                window.TceamHub.show();
+            } else {
+                if (window.TceamHub) window.TceamHub.hide();
+                initRuffleGame();
+            }
             if (myRole === 'host') {
                 sendFastMessage({ type: 'sync_edition', edition: currentEdition });
             }
@@ -2030,6 +2039,20 @@ function handleNetworkMessage(data) {
     }
     if (data.type === 'bp_lock') {
         if (typeof handleRemoteBanPickLock === 'function') handleRemoteBanPickLock(data);
+        return;
+    }
+
+    // TCEAM Hub & Lockstep Netplay (Animugen-compatible)
+    if (data.type === 'tceam_select' && window.TceamHub) {
+        window.TceamHub.applyRemoteSelection(data.selection);
+        return;
+    }
+    if (data.type === 'tceam_start_match' && typeof window.launchTceamMatch === 'function') {
+        window.launchTceamMatch(data.matchRequest, true, data.epoch || 1);
+        return;
+    }
+    if (data.type === 'tceam_net' && activeTceamNetplay) {
+        activeTceamNetplay.lockstep.receive(data.packet);
         return;
     }
 
@@ -4429,7 +4452,12 @@ window.addEventListener('DOMContentLoaded', () => {
     renderGuides();
     syncHudKeyLabels();
     setupVirtualControls();
-    initRuffleGame();
+    if (currentEdition === 'animebattle' && window.TceamHub) {
+        if (loadingOverlay) loadingOverlay.classList.add('hidden');
+        window.TceamHub.show();
+    } else {
+        initRuffleGame();
+    }
     pollGamepadsLoop(); // Bắt đầu vòng lặp đọc dữ liệu tay cầm 60FPS
 
     // Hỗ trợ tự kết nối khi mở qua link mời (?room=bvn-xxxx)
@@ -4442,3 +4470,170 @@ window.addEventListener('DOMContentLoaded', () => {
         }, 800);
     }
 });
+
+// ==========================================
+// TCEAM ENGINE LAUNCHER & LOCKSTEP CONTROLLER
+// ==========================================
+let activeTceamNetplay = null;
+const heldTceamCodes = new Set();
+
+window.addEventListener('keydown', (e) => { if (e.code) heldTceamCodes.add(e.code); }, true);
+window.addEventListener('keyup', (e) => { if (e.code) heldTceamCodes.delete(e.code); }, true);
+window.addEventListener('blur', () => heldTceamCodes.clear());
+document.addEventListener('visibilitychange', () => { if (document.hidden) heldTceamCodes.clear(); });
+
+function readLocalTceamMask() {
+    const actions = ['UP', 'DOWN', 'LEFT', 'RIGHT', 'ATTACK', 'JUMP', 'DASH', 'SKILL', 'SUPER', 'ASSIST'];
+    const map = (myRole === 'guest' && typeof p2Keys !== 'undefined') ? p2Keys : p1Keys;
+    let mask = 0;
+    for (let i = 0; i < 10; i++) {
+        const keyCode = map[actions[i]];
+        if (keyCode && heldTceamCodes.has(keyCode)) {
+            mask |= (1 << (9 - i));
+        }
+    }
+    return mask;
+}
+
+function stopTceamNetplay() {
+    if (!activeTceamNetplay) return;
+    cancelAnimationFrame(activeTceamNetplay.raf);
+    activeTceamNetplay = null;
+}
+
+function startTceamNetplay(api, epoch) {
+    stopTceamNetplay();
+    if (!window.TceamLockstep) return;
+    try {
+        if (api.callExternalInterface('animeRiftNetBegin') !== true) {
+            console.warn('[TCEAM Lockstep] animeRiftNetBegin returned false');
+            return;
+        }
+    } catch (e) {
+        console.warn('[TCEAM Lockstep] Lỗi gọi animeRiftNetBegin:', e);
+        return;
+    }
+
+    const slot = (myRole === 'guest') ? 'p2' : 'p1';
+    const lockstep = new window.TceamLockstep({
+        slot,
+        epoch,
+        send: (packet) => sendFastMessage({ type: 'tceam_net', packet }),
+        readLocalMask: readLocalTceamMask
+    });
+
+    const current = activeTceamNetplay = { lockstep, raf: 0, lastStatsAt: 0 };
+    const pump = () => {
+        if (activeTceamNetplay !== current) return;
+        try {
+            const rttVal = Number(document.getElementById('pingVal')?.innerText);
+            lockstep.setRtt(Number.isFinite(rttVal) && rttVal > 0 ? rttVal : 60);
+            const status = api.callExternalInterface('animeRiftNetSync', '');
+            const pushes = lockstep.update(status);
+            if (pushes.length) {
+                api.callExternalInterface('animeRiftNetSync', JSON.stringify(pushes));
+            }
+        } catch (err) {}
+        current.raf = requestAnimationFrame(pump);
+    };
+    current.raf = requestAnimationFrame(pump);
+}
+
+async function waitForTceamApi(timeoutMs = 20000) {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+        try {
+            const api = rufflePlayer && rufflePlayer.ruffle && rufflePlayer.ruffle(1);
+            if (api && typeof api.callExternalInterface === 'function') {
+                const metrics = api.callExternalInterface('animeRiftGetMetrics');
+                if (metrics && typeof metrics.totalFrames === 'number') {
+                    try { api.callExternalInterface('animeRiftSetSfxVolume', 1); } catch (_) {}
+                    return api;
+                }
+            }
+        } catch (_) {}
+        await new Promise(r => setTimeout(r, 150));
+    }
+    return null;
+}
+
+window.launchTceamMatch = async function (matchRequest, isOnline = false, forcedEpoch = null) {
+    if (currentEdition !== 'animebattle') {
+        currentEdition = 'animebattle';
+        localStorage.setItem('bvn_game_edition', 'animebattle');
+        if (gameEditionSelect) gameEditionSelect.value = 'animebattle';
+    }
+
+    if (window.TceamHub) window.TceamHub.hide();
+    const btnBack = document.getElementById('btnBackToHub');
+    if (btnBack) btnBack.classList.remove('hidden');
+
+    const epoch = forcedEpoch || Math.floor(Date.now() % 100000000);
+    if (isOnline && myRole === 'host' && !forcedEpoch) {
+        sendFastMessage({ type: 'tceam_start_match', matchRequest, epoch });
+    }
+
+    let api = null;
+    try {
+        const existing = rufflePlayer && rufflePlayer.ruffle && rufflePlayer.ruffle(1);
+        if (existing) {
+            const m = existing.callExternalInterface('animeRiftGetMetrics');
+            if (m && typeof m.totalFrames === 'number') api = existing;
+        }
+    } catch (_) {}
+
+    if (!api) {
+        await initRuffleGame();
+        api = await waitForTceamApi(25000);
+    }
+
+    if (loadingOverlay) loadingOverlay.classList.add('hidden');
+    if (!api) {
+        showSyncNotification('⚠️ Game TCEAM đang tải, vui lòng chờ thêm giây lát...');
+        return;
+    }
+
+    stopTceamNetplay();
+    if (isOnline && (myRole === 'host' || myRole === 'guest')) {
+        startTceamNetplay(api, epoch);
+    }
+
+    try {
+        api.callExternalInterface('animeRiftStartMatch', JSON.stringify(matchRequest));
+        focusGame();
+        showSyncNotification(`⚔️ ĐÃ VÀO TRẬN TCEAM: ${(matchRequest.p1 || []).join(', ')} vs ${(matchRequest.p2 || []).join(', ') || 'Arcade'}!`);
+    } catch (err) {
+        console.error('[TCEAM] Lỗi gọi animeRiftStartMatch:', err);
+    }
+};
+
+window.sendTceamLobbySelection = function (state) {
+    if (myRole === 'host' || myRole === 'guest') {
+        sendFastMessage({ type: 'tceam_select', selection: { p1: state.p1, p2: state.p2, map: state.map } });
+    }
+};
+
+window.handleQuickMatchFound = function (data) {
+    if (!data || !data.roomId) return;
+    showSyncNotification(`⚡ Đã ghép cặp với ${data.opponentName || 'Đối thủ'}! Đang vào phòng ${data.roomId}...`);
+    if (data.role === 'host') {
+        if (typeof createRoomAsHostWithId === 'function') {
+            createRoomAsHostWithId(data.roomId);
+        } else {
+            inputRoomCode.value = data.roomId;
+            if (btnCreateRoom) btnCreateRoom.click();
+        }
+    } else {
+        inputRoomCode.value = data.roomId;
+        joinRoomAsGuest(data.roomId);
+    }
+};
+
+const btnBackToHub = document.getElementById('btnBackToHub');
+if (btnBackToHub) {
+    btnBackToHub.addEventListener('click', () => {
+        stopTceamNetplay();
+        if (window.TceamHub) window.TceamHub.show();
+        btnBackToHub.classList.add('hidden');
+    });
+}

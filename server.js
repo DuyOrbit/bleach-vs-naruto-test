@@ -134,6 +134,95 @@ app.get('/api/room/poll', (req, res) => {
     }
 });
 
+// ==========================================
+// QUICK MATCH (GHÉP TRẬN NGẪU NHIÊN GIỐNG ANIMUGEN /online)
+// ==========================================
+const matchQueue = []; // [{ playerId, name, joinedAt, matchedRoomId, role, opponentName }]
+const matchedPlayers = new Map(); // playerId -> { roomId, role, opponentName, matchedAt }
+
+function cleanupMatchmaking() {
+    const now = Date.now();
+    for (let i = matchQueue.length - 1; i >= 0; i--) {
+        if (now - matchQueue[i].lastSeen > 25000) {
+            matchQueue.splice(i, 1);
+        }
+    }
+    for (const [pid, info] of matchedPlayers.entries()) {
+        if (now - info.matchedAt > 5 * 60 * 1000) {
+            matchedPlayers.delete(pid);
+        }
+    }
+}
+
+app.post('/api/matchmaking/join', (req, res) => {
+    cleanupMatchmaking();
+    const { playerId, name } = req.body || {};
+    if (!playerId) return res.status(400).json({ error: 'Missing playerId' });
+
+    const existingMatch = matchedPlayers.get(playerId);
+    if (existingMatch) {
+        return res.json({ state: 'matched', ...existingMatch, searching: matchQueue.length, playing: httpRooms.size });
+    }
+
+    let entry = matchQueue.find(p => p.playerId === playerId);
+    if (!entry) {
+        entry = { playerId, name: (name || 'Fighter').slice(0, 24), joinedAt: Date.now(), lastSeen: Date.now() };
+        matchQueue.push(entry);
+    } else {
+        entry.lastSeen = Date.now();
+    }
+
+    if (matchQueue.length >= 2) {
+        const p1 = matchQueue.shift();
+        const p2 = matchQueue.shift();
+        const roomId = 'qm-' + Math.random().toString(36).substring(2, 8);
+        httpRooms.set(roomId, {
+            roomId,
+            createdAt: Date.now(),
+            lastActive: Date.now(),
+            offer: null,
+            answer: null,
+            hostCandidates: [],
+            guestCandidates: [],
+            status: 'waiting'
+        });
+        const now = Date.now();
+        matchedPlayers.set(p1.playerId, { roomId, role: 'host', opponentName: p2.name, matchedAt: now });
+        matchedPlayers.set(p2.playerId, { roomId, role: 'guest', opponentName: p1.name, matchedAt: now });
+        const mine = matchedPlayers.get(playerId);
+        return res.json({ state: 'matched', ...mine, searching: matchQueue.length, playing: httpRooms.size });
+    }
+
+    res.json({ state: 'searching', searching: matchQueue.length, playing: httpRooms.size });
+});
+
+app.get('/api/matchmaking/status', (req, res) => {
+    cleanupMatchmaking();
+    const { playerId } = req.query;
+    if (!playerId) return res.status(400).json({ error: 'Missing playerId' });
+
+    const matched = matchedPlayers.get(playerId);
+    if (matched) {
+        return res.json({ state: 'matched', ...matched, searching: matchQueue.length, playing: httpRooms.size });
+    }
+    const q = matchQueue.find(p => p.playerId === playerId);
+    if (!q) {
+        return res.json({ state: 'idle', searching: matchQueue.length, playing: httpRooms.size });
+    }
+    q.lastSeen = Date.now();
+    res.json({ state: 'searching', searching: matchQueue.length, playing: httpRooms.size });
+});
+
+app.post('/api/matchmaking/leave', (req, res) => {
+    const { playerId } = req.body || {};
+    if (playerId) {
+        const idx = matchQueue.findIndex(p => p.playerId === playerId);
+        if (idx !== -1) matchQueue.splice(idx, 1);
+        matchedPlayers.delete(playerId);
+    }
+    res.json({ ok: true });
+});
+
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 const PORT = process.env.PORT || 3000;

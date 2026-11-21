@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Bleach vs Naruto Online (P2P)</title>
-    <link rel="stylesheet" href="style.css?v=2.6">
+    <link rel="stylesheet" href="style.css?v=2.7">
     <!-- Font chữ & Icon -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -70,8 +70,8 @@
                     <div class="edition-selector-wrapper" title="Chọn phiên bản game đối kháng">
                         <label for="gameEditionSelect" class="edition-label">Bản game:</label>
                         <select id="gameEditionSelect" class="edition-select">
-                            <option value="bvn26" selected>⚔️ BVN 2.6 Cổ Điển (30 FPS • 40 Tướng)</option>
-                            <option value="animebattle">🔥 Anime Battle (60 FPS • 500 Tướng Crossover)</option>
+                            <option value="animebattle" selected>🔥 Anime Battle (60 FPS • 493+ Form Tướng • Lockstep)</option>
+                            <option value="bvn26">⚔️ BVN 2.6 Cổ Điển (30 FPS • 40 Tướng)</option>
                         </select>
                     </div>
                     <div class="netcode-selector-wrapper" title="Chọn chế độ kết nối Online">
@@ -103,6 +103,9 @@
                     <button id="btnShareScreen" class="btn btn-primary btn-sm btn-screen-share hidden" title="Chia sẻ Tab Game 60FPS bằng card đồ họa GPU siêu mượt cho Khách">
                         📺 Bật Tab 60FPS GPU
                     </button>
+                    <button id="btnBackToHub" class="btn btn-secondary btn-sm hidden" title="Quay lại sảnh chọn chế độ & tướng trước trận">
+                        ↩️ Chọn Tướng / Chế Độ
+                    </button>
                     <button id="btnOpenBanPick" class="btn btn-primary btn-sm btn-banpick" title="Sảnh Chọn Tướng Esports (Ban/Pick) & Xuất trận trực tiếp bằng Web Shell">
                         ⚔️ Sảnh Ban/Pick
                     </button>
@@ -133,6 +136,7 @@
             <div class="game-container" id="gameContainer">
                 <!-- Ruffle Game Canvas (Chạy trực tiếp trên Host, stream 60FPS HD cho Guest) -->
                 <div id="flashPlayerWrapper">
+                    <div id="tceamHub" class="tceam-hub hidden"></div>
                     <div id="rufflePlayer"></div>
                     <video id="remoteVideo" class="hidden" autoplay playsinline muted></video>
                     <div id="loadingOverlay" class="loading-overlay">
@@ -883,6 +887,7 @@
 
     <!-- File cấu hình TURN Server tùy chọn (nếu có) -->
     <script src="config.js"></script>
-    <script src="main.js?v=2.9"></script>
+    <script src="tceam-hub.js?v=1.0"></script>
+    <script src="main.js?v=3.0"></script>
 </body>
 </html>
