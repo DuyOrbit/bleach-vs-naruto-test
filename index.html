@@ -23,15 +23,14 @@
             unmuteOverlay: "hidden",
             splashScreen: false,
             quality: "high",
-            preferredRenderer: "webgl",
             forceScale: true,
             backgroundExecutionMode: "mainThread",
             allowScriptAccess: true
         };
     </script>
     <!-- Ruffle (Flash Emulator WebAssembly) -->
-    <!-- Ruffle (Flash Emulator WebAssembly): Nạp từ CDN Cloudflare/unpkg tiết kiệm ~30MB băng thông máy chủ, fallback về local nếu offline -->
-    <script src="https://unpkg.com/@ruffle-rs/ruffle"></script>
+    <!-- Ruffle (Flash Emulator WebAssembly): Dùng đúng bản Ruffle nightly tương thích TCEAM, fallback về unpkg/local -->
+    <script src="https://animugen-staging.tonyngyx.workers.dev/runtime/ruffle.js"></script>
     <script>window.RufflePlayer && window.RufflePlayer.newest || document.write('<script src="ruffle/ruffle.js"><\/script>')</script>
 </head>
 <body>
@@ -888,6 +887,6 @@
     <!-- File cấu hình TURN Server tùy chọn (nếu có) -->
     <script src="config.js"></script>
     <script src="tceam-hub.js?v=1.0"></script>
-    <script src="main.js?v=3.0"></script>
+    <script src="main.js?v=3.1"></script>
 </body>
 </html>

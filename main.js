@@ -756,7 +756,6 @@ async function initRuffleGame() {
             letterbox: "on",
             forceScale: true,
             quality: "high",
-            preferredRenderer: "webgl",
             autoplay: "on",
             unmuteOverlay: "hidden",
             splashScreen: false,
@@ -769,7 +768,7 @@ async function initRuffleGame() {
 
         const hideIntroOverlay = () => {
             loadingOverlay.classList.add('hidden');
-            if (window.bvnBridge && typeof window.bvnBridge.skipIntro === 'function') {
+            if (!isAnimeBattle && window.bvnBridge && typeof window.bvnBridge.skipIntro === 'function') {
                 try { window.bvnBridge.skipIntro(); } catch (e) {}
             }
             focusGame();
@@ -779,23 +778,28 @@ async function initRuffleGame() {
         };
 
         if (btnSkipIntro) btnSkipIntro.onclick = hideIntroOverlay;
-        loadingOverlay.onclick = hideIntroOverlay;
+        if (!isAnimeBattle) loadingOverlay.onclick = hideIntroOverlay;
 
         const swfUrl = isAnimeBattle ? editionConfig.url : await getGameSwfUrl();
         const loadParams = {
             url: swfUrl,
+            base: baseStaticUrl,
             autoplay: "on",
             allowScriptAccess: true,
-            allowNetworking: "all"
+            allowNetworking: "all",
+            openUrlMode: isAnimeBattle ? "deny" : "allow",
+            backgroundExecutionMode: "mainThread"
         };
         if (isAnimeBattle && editionConfig.parameters) {
             loadParams.parameters = editionConfig.parameters;
         }
 
-        rufflePlayer.load(loadParams).then(() => {
+        await rufflePlayer.load(loadParams).then(() => {
             console.log(`[Game] Đã nạp thành công phiên bản: ${editionConfig.name}`);
             findRuffleCanvas(rufflePlayer);
-            setTimeout(hideIntroOverlay, 1500);
+            if (!isAnimeBattle) {
+                setTimeout(hideIntroOverlay, 1500);
+            }
         }).catch((err) => {
             console.warn("Lỗi tải game SWF:", err);
             loadingMsg.innerHTML = `Lỗi tải phiên bản <strong>${editionConfig.name}</strong>.<br>Vui lòng kiểm tra file hoặc kết nối mạng.`;
@@ -4539,22 +4543,33 @@ function startTceamNetplay(api, epoch) {
     current.raf = requestAnimationFrame(pump);
 }
 
-async function waitForTceamApi(timeoutMs = 20000) {
+async function waitForTceamReadyForMatch(timeoutMs = 45000) {
     const start = Date.now();
+    let api = null;
     while (Date.now() - start < timeoutMs) {
         try {
-            const api = rufflePlayer && rufflePlayer.ruffle && rufflePlayer.ruffle(1);
-            if (api && typeof api.callExternalInterface === 'function') {
-                const metrics = api.callExternalInterface('animeRiftGetMetrics');
+            const candidate = rufflePlayer && rufflePlayer.ruffle && rufflePlayer.ruffle(1);
+            if (candidate && typeof candidate.callExternalInterface === 'function') {
+                const metrics = candidate.callExternalInterface('animeRiftGetMetrics');
                 if (metrics && typeof metrics.totalFrames === 'number') {
-                    try { api.callExternalInterface('animeRiftSetSfxVolume', 1); } catch (_) {}
-                    return api;
+                    if (!api) {
+                        api = candidate;
+                        try { api.callExternalInterface('animeRiftSetSfxVolume', 1); } catch (_) {}
+                    }
+                    const st = api.callExternalInterface('animeRiftMatchState');
+                    const phase = st && st.phase;
+                    if (phase === 'result' || phase === 'error') {
+                        try { api.callExternalInterface('animeRiftResetLobby'); } catch (_) {}
+                    }
+                    if (phase === 'lobby' || phase === 'result' || phase === 'error') {
+                        return api;
+                    }
                 }
             }
         } catch (_) {}
-        await new Promise(r => setTimeout(r, 150));
+        await new Promise(r => setTimeout(r, 200));
     }
-    return null;
+    return api;
 }
 
 window.launchTceamMatch = async function (matchRequest, isOnline = false, forcedEpoch = null) {
@@ -4573,23 +4588,31 @@ window.launchTceamMatch = async function (matchRequest, isOnline = false, forced
         sendFastMessage({ type: 'tceam_start_match', matchRequest, epoch });
     }
 
+    if (loadingOverlay) {
+        loadingOverlay.classList.remove('hidden');
+        if (loadingMsg) loadingMsg.innerText = 'Đang nạp engine TCEAM & chờ sảnh sẵn sàng...';
+        if (loadingSubMsg) loadingSubMsg.innerText = 'Lần đầu tải effect.swf & tướng có thể mất 10–20 giây, vui lòng giữ tab mở...';
+    }
+
     let api = null;
     try {
         const existing = rufflePlayer && rufflePlayer.ruffle && rufflePlayer.ruffle(1);
         if (existing) {
             const m = existing.callExternalInterface('animeRiftGetMetrics');
-            if (m && typeof m.totalFrames === 'number') api = existing;
+            if (m && typeof m.totalFrames === 'number') {
+                api = await waitForTceamReadyForMatch(15000);
+            }
         }
     } catch (_) {}
 
     if (!api) {
         await initRuffleGame();
-        api = await waitForTceamApi(25000);
+        api = await waitForTceamReadyForMatch(45000);
     }
 
-    if (loadingOverlay) loadingOverlay.classList.add('hidden');
     if (!api) {
-        showSyncNotification('⚠️ Game TCEAM đang tải, vui lòng chờ thêm giây lát...');
+        if (loadingOverlay) loadingOverlay.classList.add('hidden');
+        showSyncNotification('⚠️ Engine TCEAM khởi động quá lâu, vui lòng thử lại!');
         return;
     }
 
@@ -4599,10 +4622,13 @@ window.launchTceamMatch = async function (matchRequest, isOnline = false, forced
     }
 
     try {
-        api.callExternalInterface('animeRiftStartMatch', JSON.stringify(matchRequest));
+        const res = api.callExternalInterface('animeRiftStartMatch', JSON.stringify(matchRequest));
+        console.log('[TCEAM] animeRiftStartMatch result:', res);
+        if (loadingOverlay) loadingOverlay.classList.add('hidden');
         focusGame();
         showSyncNotification(`⚔️ ĐÃ VÀO TRẬN TCEAM: ${(matchRequest.p1 || []).join(', ')} vs ${(matchRequest.p2 || []).join(', ') || 'Arcade'}!`);
     } catch (err) {
+        if (loadingOverlay) loadingOverlay.classList.add('hidden');
         console.error('[TCEAM] Lỗi gọi animeRiftStartMatch:', err);
     }
 };
