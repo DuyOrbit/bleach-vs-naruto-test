@@ -5,6 +5,7 @@
     const ANIMUGEN_MEDIA = 'https://animugen.vercel.app';
 
     const state = {
+        navTab: 'arena', // 'arena' | 'guide' | 'community'
         screen: 1, // 1: Chọn phiên bản | 2: Chọn chế độ | 3: Phòng đấu | 4: Cấm & chọn
         edition: 'bvn26', // 'bvn26' | '500'
         mode: '1v1', // '1v1' | '3v3' | 'training'
@@ -263,9 +264,9 @@
                         </div>
                     </div>
                     <div class="nvb-links">
-                        <button class="nvb-link active" data-nav="arena">ĐẤU TRƯỜNG</button>
-                        <button class="nvb-link" data-nav="guide">HƯỚNG DẪN</button>
-                        <button class="nvb-link" data-nav="community">CỘNG ĐỒNG</button>
+                        <button class="nvb-link ${state.navTab === 'arena' ? 'active' : ''}" data-nav="arena">ĐẤU TRƯỜNG</button>
+                        <button class="nvb-link ${state.navTab === 'guide' ? 'active' : ''}" data-nav="guide">HƯỚNG DẪN</button>
+                        <button class="nvb-link ${state.navTab === 'community' ? 'active' : ''}" data-nav="community">CỘNG ĐỒNG</button>
                     </div>
                 </div>
                 <div class="nvb-nav-right">
@@ -716,11 +717,109 @@
         </div>`;
     }
 
+    function renderGuideView() {
+        return `
+        <div class="nvb-page-title-row">
+            <div>
+                <h1>HƯỚNG DẪN & PHÍM ĐIỀU KHIỂN</h1>
+                <p>Thiết lập phím mặc định, tay cầm Gamepad và quy trình Cấm & Chọn 4 bước.</p>
+            </div>
+            <button class="nvb-btn-gold" id="nvbOpenKeySettingsBtn" style="min-width:220px"><span>⚙️ Tùy chỉnh phím & Tay cầm</span><span>→</span></button>
+        </div>
+
+        <div class="nvb-info-grid">
+            <div class="nvb-panel">
+                <div class="nvb-panel-head"><span style="color:var(--nvb-gold)">🔴 NGƯỜI CHƠI 1 (P1 / HOST)</span><span>BÀN PHÍM MẶC ĐỊNH</span></div>
+                <div class="nvb-keycap-row">
+                    <div class="nvb-keycap"><strong>W A S D</strong><span>Di chuyển</span></div>
+                    <div class="nvb-keycap"><strong>J</strong><span>Đánh thường</span></div>
+                    <div class="nvb-keycap"><strong>K</strong><span>Nhảy</span></div>
+                    <div class="nvb-keycap"><strong>L</strong><span>Lướt nhanh</span></div>
+                    <div class="nvb-keycap"><strong>U</strong><span>Kỹ năng</span></div>
+                    <div class="nvb-keycap"><strong>I</strong><span>Tuyệt chiêu</span></div>
+                    <div class="nvb-keycap"><strong>O</strong><span>Gọi hỗ trợ</span></div>
+                </div>
+            </div>
+
+            <div class="nvb-panel">
+                <div class="nvb-panel-head"><span style="color:var(--nvb-cyan)">🔵 NGƯỜI CHƠI 2 (P2 / KHÁCH)</span><span>BÀN PHÍM MẶC ĐỊNH</span></div>
+                <div class="nvb-keycap-row">
+                    <div class="nvb-keycap p2"><strong>↑ ↓ ← →</strong><span>Di chuyển</span></div>
+                    <div class="nvb-keycap p2"><strong>1 / J</strong><span>Đánh thường</span></div>
+                    <div class="nvb-keycap p2"><strong>2 / K</strong><span>Nhảy</span></div>
+                    <div class="nvb-keycap p2"><strong>3 / L</strong><span>Lướt nhanh</span></div>
+                    <div class="nvb-keycap p2"><strong>4 / U</strong><span>Kỹ năng</span></div>
+                    <div class="nvb-keycap p2"><strong>5 / I</strong><span>Tuyệt chiêu</span></div>
+                    <div class="nvb-keycap p2"><strong>6 / O</strong><span>Gọi hỗ trợ</span></div>
+                </div>
+            </div>
+
+            <div class="nvb-panel">
+                <div class="nvb-panel-head"><span>QUY TRÌNH CẤM & CHỌN (BAN/PICK)</span><span>04 BƯỚC</span></div>
+                <ul class="nvb-rule-list">
+                    <li><strong>Bước 01 · Cấm tướng:</strong> Mỗi bên cấm tối đa 3 tướng mạnh; tướng bị cấm sẽ bị khóa cho cả 2 đội.</li>
+                    <li><strong>Bước 02 · Tướng chính:</strong> Chọn 1 tướng (Đấu đơn 1v1) hoặc 3 tướng (Đấu đội 3v3).</li>
+                    <li><strong>Bước 03 · Tướng hỗ trợ:</strong> Chọn 1 trợ thủ (Assist) đồng hành trong trận.</li>
+                    <li><strong>Bước 04 · Vào trận:</strong> Bấm Xuất trận để nạp game và nhảy thẳng vào đấu trường.</li>
+                </ul>
+            </div>
+
+            <div class="nvb-panel">
+                <div class="nvb-panel-head"><span>CHƠI ONLINE P2P & TAY CẦM</span><span style="color:var(--nvb-mint)">WEBRTC DIRECT</span></div>
+                <ul class="nvb-rule-list">
+                    <li><strong>Kết nối trực tiếp P2P:</strong> Dùng WebRTC DataChannel truyền phím bấm độ trễ thấp, không vòng qua server Mỹ.</li>
+                    <li><strong>Phiên bản 500 Tướng (TCEAM):</strong> Hỗ trợ chế độ Lockstep 0 MB Video siêu nét.</li>
+                    <li><strong>Tay cầm (Gamepad):</strong> Cắm tay cầm USB/Bluetooth rồi bấm nút <em>Tùy chỉnh phím & Tay cầm</em> ở trên để gán nút.</li>
+                </ul>
+            </div>
+        </div>`;
+    }
+
+    function renderCommunityView() {
+        return `
+        <div class="nvb-page-title-row">
+            <div>
+                <h1>CỘNG ĐỒNG & GHÉP TRẬN</h1>
+                <p>Tìm đối thủ ngẫu nhiên, theo dõi độ trễ khu vực và ủng hộ duy trì máy chủ.</p>
+            </div>
+            <button class="nvb-btn-gold" id="nvbBackArenaFromComm" style="min-width:200px"><span>← Về Đấu Trường</span><span></span></button>
+        </div>
+
+        <div class="nvb-info-grid">
+            <div class="nvb-panel">
+                <div class="nvb-panel-head"><span>⚡ GHÉP TRẬN NGẪU NHIÊN (QUICK MATCH)</span><span style="color:var(--nvb-mint)">● SẴN SÀNG</span></div>
+                <p style="font-size:13px;color:var(--nvb-muted);line-height:1.5;margin:0 0 18px">
+                    Không cần tạo mã phòng thủ công — hệ thống tự động ghép bạn với một người chơi khác đang tìm trận và đưa cả hai vào cùng phòng đấu.
+                </p>
+                <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+                    <button class="nvb-btn-gold" id="nvbCommQuickMatch" style="min-width:220px"><span>Tìm đối thủ ngay</span><span>⚡</span></button>
+                    <span id="nvbCommQmStatus" style="font-size:12px;color:var(--nvb-muted)">Trạng thái: Đang chờ</span>
+                </div>
+            </div>
+
+            <div class="nvb-panel">
+                <div class="nvb-panel-head"><span>☕ ỦNG HỘ DUY TRÌ MÁY CHỦ (DONATE)</span><span style="color:var(--nvb-gold)">CỘNG ĐỒNG</span></div>
+                <p style="font-size:13px;color:var(--nvb-muted);line-height:1.5;margin:0 0 16px">
+                    NVB Arena hoàn toàn miễn phí và không quảng cáo. Mọi đóng góp đều dùng để duy trì hạ tầng signaling & TURN Relay tốc độ cao tại Việt Nam / Singapore.
+                </p>
+                <div style="display:flex;align-items:center;justify-content:space-between;background:#0B1018;border:1px solid #273040;border-radius:6px;padding:12px 16px">
+                    <div>
+                        <small style="display:block;font-size:10px;color:var(--nvb-muted)">MB BANK / CHUYỂN KHOẢN</small>
+                        <strong style="font-size:16px;letter-spacing:0.06em">1072917758</strong>
+                    </div>
+                    <button class="nvb-btn-dark" id="nvbCommCopyStk" style="min-width:120px;height:38px">Copy STK</button>
+                </div>
+            </div>
+        </div>`;
+    }
+
     function render() {
         const root = document.getElementById('nvbArenaApp');
         if (!root) return;
         let body = '';
-        if (state.screen === 1) body = renderScreen1();
+        if (state.navTab === 'guide') body = renderGuideView();
+        else if (state.navTab === 'community') body = renderCommunityView();
+        else if (state.screen === 1) body = renderScreen1();
         else if (state.screen === 2) body = renderScreen2();
         else if (state.screen === 3) body = renderScreen3();
         else body = renderScreen4();
@@ -867,12 +966,56 @@
 
         document.querySelectorAll('.nvb-link[data-nav]').forEach(btn => {
             btn.onclick = () => {
-                if (btn.dataset.nav === 'guide') {
-                    const modal = document.getElementById('keyModal');
-                    if (modal) modal.classList.remove('hidden');
-                }
+                state.navTab = btn.dataset.nav;
+                render();
             };
         });
+
+        const keyBtn = document.getElementById('nvbOpenKeySettingsBtn');
+        if (keyBtn) {
+            keyBtn.onclick = () => {
+                const legacy = document.querySelector('.app-container');
+                const modal = document.getElementById('keyModal');
+                if (legacy) legacy.classList.remove('nvb-hidden');
+                if (modal) modal.classList.remove('hidden');
+            };
+        }
+
+        const backComm = document.getElementById('nvbBackArenaFromComm');
+        if (backComm) backComm.onclick = () => { state.navTab = 'arena'; render(); };
+
+        const copyStk = document.getElementById('nvbCommCopyStk');
+        if (copyStk) copyStk.onclick = () => {
+            navigator.clipboard?.writeText('1072917758');
+            copyStk.innerText = '✓ Đã copy';
+        };
+
+        const qmBtn = document.getElementById('nvbCommQuickMatch');
+        if (qmBtn) {
+            qmBtn.onclick = async () => {
+                const stEl = document.getElementById('nvbCommQmStatus');
+                if (stEl) stEl.innerText = 'Đang tìm đối thủ...';
+                const pid = 'nvb-' + Math.random().toString(36).slice(2, 8);
+                try {
+                    const res = await fetch('/api/matchmaking/join', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ playerId: pid, name: state.playerName })
+                    });
+                    const data = await res.json();
+                    if (data.state === 'matched') {
+                        state.roomCode = data.roomId.toUpperCase();
+                        state.navTab = 'arena';
+                        state.screen = 3;
+                        render();
+                    } else if (stEl) {
+                        stEl.innerText = `Đang trong hàng đợi (${data.searching || 1} người đang tìm)...`;
+                    }
+                } catch (_) {
+                    if (stEl) stEl.innerText = 'Không thể kết nối máy chủ ghép trận.';
+                }
+            };
+        }
     }
 
     window.NvbArena = {
@@ -881,12 +1024,20 @@
             const legacy = document.querySelector('.app-container');
             if (legacy) legacy.classList.add('nvb-hidden');
             if (app) app.classList.remove('nvb-hidden');
+            state.navTab = 'arena';
             if (screenNum) state.screen = screenNum;
             render();
         }
     };
 
     window.addEventListener('DOMContentLoaded', () => {
+        const backBtn = document.getElementById('btnBackToNvbArena');
+        if (backBtn) {
+            backBtn.addEventListener('click', () => {
+                if (typeof stopTceamNetplay === 'function') stopTceamNetplay();
+                window.NvbArena.show(4);
+            });
+        }
         window.NvbArena.show(1);
     });
 })();

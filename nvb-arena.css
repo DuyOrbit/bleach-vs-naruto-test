@@ -1300,3 +1300,150 @@
     .nvb-steps-bar { grid-template-columns: repeat(2, 1fr); }
     .nvb-links { display: none; }
 }
+
+/* ==========================================
+   SYSTEM-WIDE NVB ARENA THEME OVERRIDES
+   (In-Game Toolbar, HUD, Modals, Controls, Lobby)
+   ========================================== */
+:root {
+    --bg-dark: #07090E;
+    --bg-panel: #10151F;
+    --bg-card: #151B26;
+    --border-color: #273040;
+    --naruto-orange: #FFB547;
+    --bleach-blue: #65C8FF;
+    --accent-red: #F07681;
+    --success-green: #69D8AC;
+    --text-primary: #F3F6FC;
+    --text-muted: #99A5B8;
+    --font-heading: 'Inter', system-ui, sans-serif;
+    --font-body: 'Inter', system-ui, sans-serif;
+}
+
+body {
+    background-color: #07090E;
+    color: #F3F6FC;
+    font-family: 'Inter', system-ui, sans-serif;
+}
+
+.app-container {
+    max-width: 1440px;
+    padding: 16px 48px 32px;
+}
+
+.app-container .header {
+    border-bottom: 1px solid #273040;
+    padding-bottom: 14px;
+    margin-bottom: 16px;
+}
+
+.app-container .game-toolbar,
+.app-container .match-mode-alert,
+.app-container .input-hud,
+.app-container .control-card,
+.app-container .lobby-card,
+.app-container .modal-content,
+.app-container .tceam-hub {
+    background: #10151F !important;
+    border: 1px solid #273040 !important;
+    border-radius: 8px !important;
+    box-shadow: none !important;
+}
+
+.app-container .game-container {
+    border: 1px solid #273040 !important;
+    border-radius: 10px !important;
+    background: #07090E !important;
+}
+
+.app-container .btn-primary,
+.app-container .btn-banpick {
+    background: #FFB547 !important;
+    color: #07090E !important;
+    border: none !important;
+    font-weight: 700 !important;
+    border-radius: 6px !important;
+}
+
+.app-container .btn-secondary,
+.app-container .btn-warning {
+    background: #151B26 !important;
+    color: #F3F6FC !important;
+    border: 1px solid #273040 !important;
+    border-radius: 6px !important;
+}
+
+.app-container .btn-secondary:hover {
+    border-color: #FFB547 !important;
+}
+
+.app-container select,
+.app-container input[type="text"] {
+    background: #0B1018 !important;
+    border: 1px solid #273040 !important;
+    color: #F3F6FC !important;
+    border-radius: 5px !important;
+}
+
+/* Guide & Community Views inside NVB Arena */
+.nvb-info-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 24px;
+    margin-bottom: 24px;
+}
+
+@media (max-width: 960px) {
+    .nvb-info-grid { grid-template-columns: 1fr; }
+}
+
+.nvb-keycap-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 14px;
+}
+
+.nvb-keycap {
+    min-width: 56px;
+    padding: 8px 12px;
+    background: #0B1018;
+    border: 1px solid #273040;
+    border-bottom: 3px solid #273040;
+    border-radius: 6px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+}
+
+.nvb-keycap strong {
+    font-size: 14px;
+    font-weight: 800;
+    color: var(--nvb-gold);
+}
+
+.nvb-keycap.p2 strong {
+    color: var(--nvb-cyan);
+}
+
+.nvb-keycap span {
+    font-size: 10px;
+    color: var(--nvb-muted);
+}
+
+.nvb-rule-list {
+    margin: 14px 0 0;
+    padding-left: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    font-size: 13px;
+    color: var(--nvb-muted);
+    line-height: 1.5;
+}
+
+.nvb-rule-list strong {
+    color: var(--nvb-text);
+}
+
