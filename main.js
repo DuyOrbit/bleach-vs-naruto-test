@@ -907,6 +907,32 @@ function dispatchFlashKeyEvent(type, flashKeyInfo) {
 }
 
 // ==========================================
+// CÂN BẰNG ĐỘ TRỄ 2 BÊN (SYMMETRIC INPUT DELAY - CHUẨN ANIMUGEN)
+// ==========================================
+let symmetricDelayEnabled = true;
+
+function getSymmetricDelayMs() {
+    if (!symmetricDelayEnabled || myRole !== 'host' || !peerConnection) return 0;
+    const ping = parseInt(pingVal?.innerText, 10) || 0;
+    if (ping <= 10) return 0;
+    // Công thức cân bằng trễ Animugen lockstep:
+    // delayFrames = Math.max(1, Math.min(5, Math.ceil(ping / 2 / 16.67)))
+    const delayFrames = Math.max(1, Math.min(5, Math.ceil((ping / 2) / 16.67)));
+    return delayFrames * 16.67;
+}
+
+function dispatchFlashKeyEventWithSymmetricDelay(type, flashKeyInfo) {
+    const delayMs = getSymmetricDelayMs();
+    if (delayMs > 0) {
+        setTimeout(() => {
+            dispatchFlashKeyEvent(type, flashKeyInfo);
+        }, delayMs);
+    } else {
+        dispatchFlashKeyEvent(type, flashKeyInfo);
+    }
+}
+
+// ==========================================
 // 5. WEBRTC 60FPS HD CANVAS STREAMING ENGINE
 // ==========================================
 
@@ -1739,8 +1765,8 @@ function handleUserKeyEvent(e, eventType) {
             }
         } else {
             updateInputHud('p1', 'ATTACK', isKeyDown);
-            dispatchFlashKeyEvent(eventType, FLASH_NATIVE_KEYS.p1.ATTACK);
-            dispatchFlashKeyEvent(eventType, rawKey);
+            dispatchFlashKeyEventWithSymmetricDelay(eventType, FLASH_NATIVE_KEYS.p1.ATTACK);
+            dispatchFlashKeyEventWithSymmetricDelay(eventType, rawKey);
             if (myRole === 'host' && currentNetcodeMode === 'input_sync') {
                 setHostP1KeyAction('ATTACK', isKeyDown);
                 setHostP1KeyAction('ENTER', isKeyDown);
@@ -1768,7 +1794,7 @@ function handleUserKeyEvent(e, eventType) {
             swallow();
             if (e.repeat) return;
             updateInputHud('p1', actionP1, isKeyDown);
-            dispatchFlashKeyEvent(eventType, FLASH_NATIVE_KEYS.p1[actionP1]);
+            dispatchFlashKeyEventWithSymmetricDelay(eventType, FLASH_NATIVE_KEYS.p1[actionP1]);
             if (currentNetcodeMode === 'input_sync') {
                 setHostP1KeyAction(actionP1, isKeyDown);
                 sendFastMessage({
@@ -1958,13 +1984,25 @@ function handleNetworkMessage(data) {
         return;
     }
 
-    // Đồng bộ vào trận đấu từ Web Shell
+    // Đồng bộ Sảnh Ban/Pick Tướng Esports giữa Host và Guest
+    if (data.type === 'bp_select') {
+        if (typeof handleRemoteBanPickSelect === 'function') handleRemoteBanPickSelect(data);
+        return;
+    }
+    if (data.type === 'bp_lock') {
+        if (typeof handleRemoteBanPickLock === 'function') handleRemoteBanPickLock(data);
+        return;
+    }
+
+    // Đồng bộ vào trận đấu từ Web Shell hoặc Ban/Pick Lobby
     if (data.type === 'sync_start_match') {
         console.log(`[Guest] Nhận lệnh khởi động trận đấu từ Host: ${data.p1} vs ${data.p2}`);
+        if (typeof closeBanPickModal === 'function') closeBanPickModal();
         if (window.bvnBridge && typeof window.bvnBridge.startMatch === 'function') {
-            window.bvnBridge.startMatch(data.p1, data.p2, data.p1Assist, data.p2Assist, data.stage, data.modo);
+            window.bvnBridge.startMatch(data.p1, data.p2, data.p1Assist, data.p2Assist, data.stage, data.modo || 3);
         }
         showSyncNotification(`⚔️ Chủ phòng khởi động trận đấu: ${data.p1} vs ${data.p2}!`);
+        focusGame();
         return;
     }
 
@@ -3525,6 +3563,376 @@ if (btnWsEndMatch) {
             sendFastMessage({ type: 'sync_bridge_action', action: 'end_match' });
         }
         updateWsLiveStatus();
+    });
+}
+
+// ==========================================
+// 10B. SẢNH CHỌN TƯỚNG BAN/PICK ESPORTS (DRAFT LOBBY)
+// ==========================================
+const BAN_PICK_ROSTER = {
+    bleach: [
+        { id: '一护', name: 'Ichigo Kurosaki', sub: 'Thần Chết', icon: '🗡️' },
+        { id: '一护万解', name: 'Ichigo Bankai', sub: 'Vạn Giải', icon: '⚡' },
+        { id: '一护虚化', name: 'Ichigo Hollow', sub: 'Mặt Nạ Hư', icon: '🎭' },
+        { id: '白一护', name: 'White Ichigo', sub: 'Bạch Nguyệt', icon: '⚪' },
+        { id: '牛头白一护', name: 'Vasto Lorde', sub: 'Hư Vương', icon: '👹' },
+        { id: '露其雅', name: 'Rukia Kuchiki', sub: 'Tuyết Hoa', icon: '❄️' },
+        { id: '露其雅始解', name: 'Rukia Shikai', sub: 'Băng Vũ', icon: '🌨️' },
+        { id: '日番谷', name: 'Hitsugaya', sub: 'Đội Trưởng 10', icon: '🧊' },
+        { id: '日番谷万解', name: 'Hitsugaya Bankai', sub: 'Đại Hồng Liên', icon: '🐉' },
+        { id: '白哉', name: 'Byakuya', sub: 'Thiên Bản Anh', icon: '🌸' },
+        { id: '恋次', name: 'Renji Abarai', sub: 'Xà Vĩ Hoàn', icon: '🐍' },
+        { id: '银', name: 'Gin Ichimaru', sub: 'Thần Thương', icon: '🗡️' },
+        { id: '蓝染', name: 'Aizen Sosuke', sub: 'Kính Hoa Thủy Nguyệt', icon: '👓' },
+        { id: '剑八', name: 'Kenpachi', sub: 'Đội 11 Quỷ Kiếm', icon: '⚔️' },
+        { id: '小乌', name: 'Ulquiorra', sub: 'Espada No.4', icon: '🦇' },
+        { id: '碎蜂', name: 'Soi Fon', sub: 'Tước Phong', icon: '🐝' },
+        { id: '葛力姆乔', name: 'Grimmjow', sub: 'Espada No.6', icon: '🐾' },
+        { id: '蒂雅', name: 'Harribel', sub: 'Espada No.3', icon: '🦈' },
+        { id: '史塔克', name: 'Coyote Starrk', sub: 'Espada No.1', icon: '🐺' },
+        { id: '茶渡', name: 'Yasutora Chad', sub: 'Cự Thần Tí', icon: '🥊' },
+        { id: '石田', name: 'Uryu Ishida', sub: 'Diệt Khước Sư', icon: '🏹' },
+        { id: '一角', name: 'Ikkaku', sub: 'Nhất Giác', icon: '🎋' },
+        { id: '涅茧利', name: 'Mayuri', sub: 'KHOA HỌC GIA', icon: '🧪' }
+    ],
+    naruto: [
+        { id: '鸣人', name: 'Naruto Uzumaki', sub: 'Hokage 7', icon: '🍥' },
+        { id: '仙鸣', name: 'Naruto Tiên Nhân', sub: 'Hiền Nhân Cóc', icon: '🐸' },
+        { id: '鸣人九尾', name: 'Naruto 1 Vĩ', sub: 'Áo Vĩ Thú', icon: '🦊' },
+        { id: '鸣人九尾实体', name: 'Naruto 4 Vĩ', sub: 'Hắc Vĩ Cuồng', icon: '💥' },
+        { id: '黄金鸣人', name: 'Golden Naruto', sub: 'Chakra Cửu Vĩ', icon: '✨' },
+        { id: '佐助', name: 'Sasuke Uchiha', sub: 'Chidori Lôi', icon: '⚡' },
+        { id: '佐助咒怨', name: 'Sasuke Chú Ấn', sub: 'Nguyền Ấn', icon: '🦅' },
+        { id: '须佐佐助', name: 'Sasuke Susanoo', sub: 'Vạn Hoa Đồng', icon: '👁️' },
+        { id: '卡卡西', name: 'Kakashi Hatake', sub: 'Sharingan', icon: '📖' },
+        { id: '小樱', name: 'Sakura Haruno', sub: 'Bách Hào Ấn', icon: '🌸' },
+        { id: '李洛克', name: 'Rock Lee', sub: 'Bát Môn', icon: '🥋' },
+        { id: '我爱罗', name: 'Gaara', sub: 'Kazekage Cát', icon: '🏺' },
+        { id: '日向宁次', name: 'Neji Hyuga', sub: 'Bát Quái Chưởng', icon: '☯️' },
+        { id: '自来也', name: 'Jiraiya', sub: 'Hao Kiệt Cóc', icon: '📜' },
+        { id: '鼬', name: 'Itachi Uchiha', sub: 'Tsukuyomi', icon: '🐦' },
+        { id: '佩恩', name: 'Pain Lục Đạo', sub: 'Thần La Thiên Chinh', icon: '🪐' },
+        { id: '斑', name: 'Madara Uchiha', sub: 'Chiến Thần', icon: '🔥' },
+        { id: '四代', name: 'Minato Namikaze', sub: 'Tia Chớp Vàng', icon: '⚡' },
+        { id: '佐井', name: 'Sai', sub: 'Họa Thú', icon: '🖌️' },
+        { id: '大蛇丸', name: 'Orochimaru', sub: 'Bạch Xà Tam Nin', icon: '🐍' },
+        { id: '水月', name: 'Suigetsu', sub: 'Thủy Hóa Kiếm', icon: '💧' },
+        { id: '迪达拉', name: 'Deidara', sub: 'Nổ Tung', icon: '💣' }
+    ],
+    guest: [
+        { id: '剑心', name: 'Kenshin Himura', sub: 'Phi Thiên Ngự Kiếm', icon: '🗡️' },
+        { id: '志志雄', name: 'Shishio Makoto', sub: 'Hỏa Kiếm Vô Hạn', icon: '🔥' }
+    ],
+    assist: [
+        { id: '夜一', name: 'Yoruichi (Trợ thủ)', sub: 'Thuấn Thần Lôi Điện', icon: '⚡' },
+        { id: '我爱罗', name: 'Gaara (Trợ thủ)', sub: 'Khiên Sa Bảo Vệ', icon: '🏺' },
+        { id: '自来也', name: 'Jiraiya (Trợ thủ)', sub: 'Châm Địa Ngục', icon: '🐸' },
+        { id: '井上', name: 'Orihime (Trợ thủ)', sub: 'Thuẫn Hồi Sinh', icon: '🛡️' },
+        { id: '石田', name: 'Ishida (Trợ thủ)', sub: 'Mưa Tên Khí Công', icon: '🏹' },
+        { id: '手鞠', name: 'Temari (Trợ thủ)', sub: 'Cuồng Phong Quạt', icon: '🌪️' },
+        { id: '天天', name: 'Tenten (Trợ thủ)', sub: 'Bách Khí Liêm Đao', icon: '🗡️' },
+        { id: '松本', name: 'Matsumoto (Trợ thủ)', sub: 'Tro Tàn Phủ Kín', icon: '🌫️' },
+        { id: '纲手', name: 'Tsunade (Trợ thủ)', sub: 'Cấp Cứu Trị Liệu', icon: '💚' },
+        { id: '土影', name: 'Ohnoki (Trợ thủ)', sub: 'Trần Độn Nguyên Tử', icon: '🪨' },
+        { id: '雏田', name: 'Hinata (Trợ thủ)', sub: 'Bảo Hộ Nhu Quyền', icon: '💜' },
+        { id: '八千流', name: 'Yachiru (Trợ thủ)', sub: 'Kẹo Ngọt Cổ Động', icon: '🍬' },
+        { id: '涅音梦', name: 'Nemu (Trợ thủ)', sub: 'Dược Liệu Hồi Phục', icon: '💉' },
+        { id: '魂', name: 'Kon (Trợ thủ)', sub: 'Thú Bông Cản Đòn', icon: '🦁' }
+    ]
+};
+
+const banPickModal = document.getElementById('banPickModal');
+const btnOpenBanPick = document.getElementById('btnOpenBanPick');
+const btnCloseBanPickModal = document.getElementById('btnCloseBanPickModal');
+const btnCloseBanPickBottom = document.getElementById('btnCloseBanPickBottom');
+const btnLockP1 = document.getElementById('btnLockP1');
+const btnLockP2 = document.getElementById('btnLockP2');
+const btnLaunchMatch = document.getElementById('btnLaunchMatch');
+const bpStageSelect = document.getElementById('bpStageSelect');
+const bpSearchInput = document.getElementById('bpSearchInput');
+const bpGridContainer = document.getElementById('bpGridContainer');
+const bpCenterHint = document.getElementById('bpCenterHint');
+
+let bpState = {
+    p1: { fighter: '一护', assist: '夜一', locked: false },
+    p2: { fighter: '鸣人', assist: '我爱罗', locked: false },
+    stage: '火影瀑布',
+    currentTab: 'bleach',
+    searchQuery: ''
+};
+
+function findRosterItem(id) {
+    for (const cat of Object.values(BAN_PICK_ROSTER)) {
+        const found = cat.find(item => item.id === id);
+        if (found) return found;
+    }
+    return { id, name: id, sub: '', icon: '👤' };
+}
+
+function updateBpUi() {
+    if (!banPickModal) return;
+
+    // Cập nhật P1 Card
+    const p1Fighter = findRosterItem(bpState.p1.fighter);
+    const p1Assist = findRosterItem(bpState.p1.assist);
+    const p1Avatar = document.getElementById('bpP1Avatar');
+    const p1Name = document.getElementById('bpP1Name');
+    const p1AssistLabel = document.getElementById('bpP1AssistLabel');
+    const p1Status = document.getElementById('bpP1Status');
+
+    if (p1Avatar) p1Avatar.innerText = p1Fighter.icon || '🗡️';
+    if (p1Name) p1Name.innerText = p1Fighter.name;
+    if (p1AssistLabel) p1AssistLabel.innerText = `Trợ thủ: ${p1Assist.name}`;
+    if (p1Status) {
+        if (bpState.p1.locked) {
+            p1Status.innerText = '✓ ĐÃ KHÓA TƯỚNG';
+            p1Status.classList.add('locked');
+        } else {
+            p1Status.innerText = 'Đang chọn tướng...';
+            p1Status.classList.remove('locked');
+        }
+    }
+    if (btnLockP1) {
+        if (bpState.p1.locked) {
+            btnLockP1.innerText = '✓ Đã Khóa (P1)';
+            btnLockP1.classList.add('locked');
+            btnLockP1.disabled = true;
+        } else {
+            btnLockP1.innerText = '🔒 Khóa Tướng P1';
+            btnLockP1.classList.remove('locked');
+            btnLockP1.disabled = (myRole === 'guest');
+        }
+    }
+
+    // Cập nhật P2 Card
+    const p2Fighter = findRosterItem(bpState.p2.fighter);
+    const p2Assist = findRosterItem(bpState.p2.assist);
+    const p2Avatar = document.getElementById('bpP2Avatar');
+    const p2Name = document.getElementById('bpP2Name');
+    const p2AssistLabel = document.getElementById('bpP2AssistLabel');
+    const p2Status = document.getElementById('bpP2Status');
+
+    if (p2Avatar) p2Avatar.innerText = p2Fighter.icon || '🦊';
+    if (p2Name) p2Name.innerText = p2Fighter.name;
+    if (p2AssistLabel) p2AssistLabel.innerText = `Trợ thủ: ${p2Assist.name}`;
+    if (p2Status) {
+        if (bpState.p2.locked) {
+            p2Status.innerText = '✓ ĐÃ KHÓA TƯỚNG';
+            p2Status.classList.add('locked');
+        } else {
+            p2Status.innerText = 'Đang chọn tướng...';
+            p2Status.classList.remove('locked');
+        }
+    }
+    if (btnLockP2) {
+        if (bpState.p2.locked) {
+            btnLockP2.innerText = '✓ Đã Khóa (P2)';
+            btnLockP2.classList.add('locked');
+            btnLockP2.disabled = true;
+        } else {
+            btnLockP2.innerText = '🔒 Khóa Tướng P2';
+            btnLockP2.classList.remove('locked');
+            btnLockP2.disabled = (myRole === 'host');
+        }
+    }
+
+    // Cập nhật Map
+    if (bpStageSelect && bpStageSelect.value !== bpState.stage) {
+        bpStageSelect.value = bpState.stage;
+    }
+
+    // Cập nhật nút Xuất trận
+    const bothLocked = bpState.p1.locked && bpState.p2.locked;
+    if (btnLaunchMatch) {
+        if (bothLocked) {
+            btnLaunchMatch.disabled = false;
+            btnLaunchMatch.classList.add('ready');
+            btnLaunchMatch.innerText = (myRole === 'guest') ? '⏳ CHỜ CHỦ PHÒNG XUẤT TRẬN' : '⚔️ XUẤT TRẬN (VÀO GAME)';
+            if (bpCenterHint) bpCenterHint.innerText = (myRole === 'guest') ? 'Chủ phòng sắp bấm xuất trận...' : '🔥 2 bên đã khóa xong! Host bấm để vào trận!';
+        } else {
+            btnLaunchMatch.disabled = true;
+            btnLaunchMatch.classList.remove('ready');
+            btnLaunchMatch.innerText = '⚔️ XUẤT TRẬN (VÀO GAME)';
+            if (bpCenterHint) bpCenterHint.innerText = 'Chờ cả 2 bên khóa tướng để xuất trận';
+        }
+    }
+
+    renderBanPickGrid();
+}
+
+function renderBanPickGrid() {
+    if (!bpGridContainer) return;
+    bpGridContainer.innerHTML = '';
+
+    const list = BAN_PICK_ROSTER[bpState.currentTab] || [];
+    const query = (bpState.searchQuery || '').toLowerCase().trim();
+
+    const filtered = list.filter(item => {
+        if (!query) return true;
+        return item.name.toLowerCase().includes(query) || item.sub.toLowerCase().includes(query) || item.id.toLowerCase().includes(query);
+    });
+
+    if (filtered.length === 0) {
+        bpGridContainer.innerHTML = `<div style="grid-column: 1/-1; text-align: center; color: #888; padding: 20px;">Không tìm thấy nhân vật phù hợp</div>`;
+        return;
+    }
+
+    filtered.forEach(item => {
+        const card = document.createElement('div');
+        card.className = 'bp-item-card';
+
+        const isAssist = (bpState.currentTab === 'assist');
+        const isSelectedP1 = isAssist ? (bpState.p1.assist === item.id) : (bpState.p1.fighter === item.id);
+        const isSelectedP2 = isAssist ? (bpState.p2.assist === item.id) : (bpState.p2.fighter === item.id);
+
+        if (isSelectedP1) card.classList.add('selected-p1');
+        if (isSelectedP2) card.classList.add('selected-p2');
+
+        card.innerHTML = `
+            <div class="bp-item-icon">${item.icon || '👤'}</div>
+            <div class="bp-item-name" title="${item.name}">${item.name}</div>
+            <div class="bp-item-sub">${item.sub}</div>
+        `;
+
+        card.addEventListener('click', () => {
+            selectRosterItem(item.id, isAssist);
+        });
+
+        bpGridContainer.appendChild(card);
+    });
+}
+
+function selectRosterItem(id, isAssist) {
+    if (myRole === 'guest') {
+        if (bpState.p2.locked) return;
+        if (isAssist) bpState.p2.assist = id;
+        else bpState.p2.fighter = id;
+        sendFastMessage({ type: 'bp_select', role: 'p2', fighter: bpState.p2.fighter, assist: bpState.p2.assist });
+    } else {
+        if (bpState.p1.locked) return;
+        if (isAssist) bpState.p1.assist = id;
+        else bpState.p1.fighter = id;
+        if (myRole === 'host') {
+            sendFastMessage({ type: 'bp_select', role: 'p1', fighter: bpState.p1.fighter, assist: bpState.p1.assist });
+        }
+    }
+    updateBpUi();
+}
+
+function handleRemoteBanPickSelect(data) {
+    if (data.role === 'p1') {
+        if (data.fighter) bpState.p1.fighter = data.fighter;
+        if (data.assist) bpState.p1.assist = data.assist;
+    } else if (data.role === 'p2') {
+        if (data.fighter) bpState.p2.fighter = data.fighter;
+        if (data.assist) bpState.p2.assist = data.assist;
+    }
+    if (data.stage) bpState.stage = data.stage;
+    updateBpUi();
+}
+
+function handleRemoteBanPickLock(data) {
+    if (data.role === 'p1') bpState.p1.locked = true;
+    if (data.role === 'p2') bpState.p2.locked = true;
+    updateBpUi();
+}
+
+function openBanPickModal() {
+    if (banPickModal) {
+        banPickModal.classList.remove('hidden');
+        updateBpUi();
+    }
+}
+
+function closeBanPickModal() {
+    if (banPickModal) banPickModal.classList.add('hidden');
+}
+
+// Bắt sự kiện UI Ban/Pick
+if (btnOpenBanPick) btnOpenBanPick.addEventListener('click', openBanPickModal);
+if (btnCloseBanPickModal) btnCloseBanPickModal.addEventListener('click', closeBanPickModal);
+if (btnCloseBanPickBottom) btnCloseBanPickBottom.addEventListener('click', closeBanPickModal);
+
+if (banPickModal) {
+    banPickModal.addEventListener('click', (e) => {
+        if (e.target === banPickModal) closeBanPickModal();
+    });
+}
+
+document.querySelectorAll('.bp-tab').forEach(tabBtn => {
+    tabBtn.addEventListener('click', () => {
+        document.querySelectorAll('.bp-tab').forEach(b => b.classList.remove('active'));
+        tabBtn.classList.add('active');
+        bpState.currentTab = tabBtn.dataset.tab || 'bleach';
+        renderBanPickGrid();
+    });
+});
+
+if (bpSearchInput) {
+    bpSearchInput.addEventListener('input', (e) => {
+        bpState.searchQuery = e.target.value;
+        renderBanPickGrid();
+    });
+}
+
+if (bpStageSelect) {
+    bpStageSelect.addEventListener('change', (e) => {
+        bpState.stage = e.target.value;
+        if (myRole === 'host') {
+            sendFastMessage({ type: 'bp_select', role: 'p1', stage: bpState.stage });
+        }
+    });
+}
+
+if (btnLockP1) {
+    btnLockP1.addEventListener('click', () => {
+        if (myRole === 'guest') return;
+        bpState.p1.locked = true;
+        updateBpUi();
+        if (myRole === 'host') {
+            sendFastMessage({ type: 'bp_lock', role: 'p1' });
+        }
+    });
+}
+
+if (btnLockP2) {
+    btnLockP2.addEventListener('click', () => {
+        if (myRole === 'host') return;
+        bpState.p2.locked = true;
+        updateBpUi();
+        sendFastMessage({ type: 'bp_lock', role: 'p2' });
+    });
+}
+
+if (btnLaunchMatch) {
+    btnLaunchMatch.addEventListener('click', () => {
+        if (myRole === 'guest') return; // Chỉ Host mới có quyền bấm xuất trận
+        if (!bpState.p1.locked || !bpState.p2.locked) {
+            alert('Cả 2 đấu thủ cần bấm Khóa Tướng trước khi xuất trận!');
+            return;
+        }
+
+        console.log(`[Ban/Pick] Host xuất trận: P1=${bpState.p1.fighter} (+${bpState.p1.assist}) vs P2=${bpState.p2.fighter} (+${bpState.p2.assist}) | Stage=${bpState.stage}`);
+
+        // Gọi lệnh Flash trực tiếp
+        if (window.bvnBridge && typeof window.bvnBridge.startMatch === 'function') {
+            window.bvnBridge.startMatch(bpState.p1.fighter, bpState.p2.fighter, bpState.p1.assist, bpState.p2.assist, bpState.stage, 3);
+        }
+
+        // Gửi lệnh đồng bộ cho Khách
+        sendFastMessage({
+            type: 'sync_start_match',
+            p1: bpState.p1.fighter,
+            p2: bpState.p2.fighter,
+            p1Assist: bpState.p1.assist,
+            p2Assist: bpState.p2.assist,
+            stage: bpState.stage,
+            modo: 3
+        });
+
+        closeBanPickModal();
+        focusGame();
+        showSyncNotification(`⚔️ ĐÃ XUẤT TRẬN: ${findRosterItem(bpState.p1.fighter).name} vs ${findRosterItem(bpState.p2.fighter).name}!`);
     });
 }
 

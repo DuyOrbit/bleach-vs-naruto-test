@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Bleach vs Naruto Online (P2P)</title>
-    <link rel="stylesheet" href="style.css?v=2.2">
+    <link rel="stylesheet" href="style.css?v=2.3">
     <!-- Font chữ & Icon -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -102,6 +102,9 @@
                     </div>
                     <button id="btnShareScreen" class="btn btn-primary btn-sm btn-screen-share hidden" title="Chia sẻ Tab Game 60FPS bằng card đồ họa GPU siêu mượt cho Khách">
                         📺 Bật Tab 60FPS GPU
+                    </button>
+                    <button id="btnOpenBanPick" class="btn btn-primary btn-sm btn-banpick" title="Sảnh Chọn Tướng Esports (Ban/Pick) & Xuất trận trực tiếp bằng Web Shell">
+                        ⚔️ Sảnh Ban/Pick
                     </button>
                     <button id="btnOpenWebShell" class="btn btn-warning btn-sm btn-webshell" title="Mở bảng Chọn Tướng Web Shell & Can thiệp code trực tiếp">
                         ⚡ Chọn Tướng Web Shell
@@ -426,6 +429,90 @@
                 <div class="modal-footer">
                     <button id="btnResetDefaultKeys" class="btn btn-secondary">Khôi phục mặc định</button>
                     <button id="btnSaveKeys" class="btn btn-primary">✓ Lưu Cài Đặt</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- MODAL BAN/PICK TƯỚNG ESPORTS DRAFT LOBBY -->
+        <div id="banPickModal" class="modal-backdrop hidden">
+            <div class="modal-card modal-card-banpick">
+                <div class="modal-header">
+                    <div class="modal-header-title">
+                        <span class="webshell-badge" style="background: linear-gradient(135deg, #ff7700, #ff0055);">ESPORTS DRAFT</span>
+                        <h3>⚔️ SẢNH CHỌN TƯỚNG TRỰC QUAN (BAN/PICK LOBBY)</h3>
+                    </div>
+                    <button id="btnCloseBanPickModal" class="btn-close" title="Đóng">&times;</button>
+                </div>
+                <div class="modal-body banpick-modal-body">
+                    <!-- Showcase P1 vs P2 -->
+                    <div class="bp-showcase">
+                        <!-- Thẻ P1 -->
+                        <div class="bp-card bp-p1-card" id="bpP1Card">
+                            <span class="bp-card-tag tag-p1">🔴 P1 (HOST)</span>
+                            <div class="bp-avatar-box">
+                                <div class="bp-avatar-circle" id="bpP1Avatar">🗡️</div>
+                            </div>
+                            <div class="bp-info">
+                                <span class="bp-name" id="bpP1Name">Ichigo (Kurosaki)</span>
+                                <span class="bp-assist-label" id="bpP1AssistLabel">Trợ thủ: Yoruichi (夜一)</span>
+                                <span class="bp-ready-badge" id="bpP1Status">Đang chọn tướng...</span>
+                            </div>
+                            <button id="btnLockP1" class="bp-lock-btn btn-lock-p1">🔒 Khóa Tướng P1</button>
+                        </div>
+
+                        <!-- Cột VS & Map -->
+                        <div class="bp-center">
+                            <span class="bp-vs-text">VS</span>
+                            <div class="bp-stage-box">
+                                <label for="bpStageSelect">Bản đồ thi đấu:</label>
+                                <select id="bpStageSelect" class="bp-stage-select">
+                                    <option value="火影瀑布" selected>Thác Thung Lũng Tận Cùng</option>
+                                    <option value="木叶村">Làng Lá (Konoha)</option>
+                                    <option value="宇智波村">Gia Tộc Uchiha</option>
+                                    <option value="双极">Đài Hành Hình Sokyoku</option>
+                                    <option value="静涎亭">Tĩnh Linh Đình</option>
+                                    <option value="现世">Hiện Thế Karakura</option>
+                                    <option value="温泉">Khu Suối Nước Nóng</option>
+                                    <option value="楼顶">Tầng Thượng Tòa Nhà</option>
+                                </select>
+                            </div>
+                            <button id="btnLaunchMatch" class="btn-launch" disabled>⚔️ XUẤT TRẬN (VÀO GAME)</button>
+                            <span class="bp-center-hint" id="bpCenterHint">Chờ cả 2 bên khóa tướng để xuất trận</span>
+                        </div>
+
+                        <!-- Thẻ P2 -->
+                        <div class="bp-card bp-p2-card" id="bpP2Card">
+                            <span class="bp-card-tag tag-p2">🔵 P2 (KHÁCH)</span>
+                            <div class="bp-avatar-box">
+                                <div class="bp-avatar-circle" id="bpP2Avatar">🦊</div>
+                            </div>
+                            <div class="bp-info">
+                                <span class="bp-name" id="bpP2Name">Naruto Uzumaki</span>
+                                <span class="bp-assist-label" id="bpP2AssistLabel">Trợ thủ: Gaara (我爱罗)</span>
+                                <span class="bp-ready-badge" id="bpP2Status">Đang chọn tướng...</span>
+                            </div>
+                            <button id="btnLockP2" class="bp-lock-btn btn-lock-p2">🔒 Khóa Tướng P2</button>
+                        </div>
+                    </div>
+
+                    <!-- Khu vực danh sách tướng (Roster Grid) -->
+                    <div class="bp-roster-section">
+                        <div class="bp-tabs-bar">
+                            <div class="bp-tabs">
+                                <button class="bp-tab active" data-tab="bleach">🗡️ Bleach</button>
+                                <button class="bp-tab" data-tab="naruto">🍥 Naruto</button>
+                                <button class="bp-tab" data-tab="guest">⚔️ Khách Mời</button>
+                                <button class="bp-tab" data-tab="assist">🛡️ Trợ Thủ (Assist)</button>
+                            </div>
+                            <input type="text" id="bpSearchInput" class="bp-search-input" placeholder="🔍 Tìm kiếm tướng..." />
+                        </div>
+                        <div class="bp-grid-container" id="bpGridContainer">
+                            <!-- Sinh tự động từ BAN_PICK_ROSTER -->
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer webshell-footer">
+                    <button id="btnCloseBanPickBottom" class="btn btn-secondary">Đóng sảnh</button>
                 </div>
             </div>
         </div>
@@ -778,6 +865,6 @@
 
     <!-- File cấu hình TURN Server tùy chọn (nếu có) -->
     <script src="config.js"></script>
-    <script src="main.js?v=2.2"></script>
+    <script src="main.js?v=2.3"></script>
 </body>
 </html>
