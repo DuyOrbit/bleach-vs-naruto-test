@@ -1998,31 +1998,38 @@ function getWebSocketUrl() {
     const customWs = localStorage.getItem('bvn_custom_ws_url');
     if (customWs) return customWs;
 
-    const hostname = window.location.hostname;
-    // Chạy local / mạng LAN nội bộ
-    if (!hostname || hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '0.0.0.0') {
+    const port = window.location.port;
+    // 1. Nếu mở trực tiếp qua cổng 3000 của node server.js (http://localhost:3000)
+    if (port === '3000') {
         const wsProto = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
         return `${wsProto}${window.location.host}`;
     }
 
-    // Nếu chạy trên các nền tảng Static Hosting (Cloudflare Pages, Vercel, GitHub Pages)
-    // Tự động kết nối tới Render Signaling Server
-    if (hostname.endsWith('.pages.dev') || hostname.endsWith('.vercel.app') || hostname.endsWith('.github.io')) {
-        return 'wss://naruto-vs-bleach-online.onrender.com';
-    }
-
-    // Mặc định: Chạy cùng host (chạy trực tiếp trên Render hoặc VPS)
-    const wsProto = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
-    return `${wsProto}${window.location.host}`;
+    // 2. Mặc định: Kết nối máy chủ Signaling đám mây (Render) để chơi Online qua Internet
+    // (Áp dụng cho Wamp localhost:80, Vercel, Cloudflare Pages, GitHub Pages, điện thoại, máy bạn bè)
+    return 'wss://naruto-vs-bleach-online.onrender.com';
 }
 
 function connectWebSocketAndSend(initialMsg) {
+    if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify(initialMsg));
+        return;
+    }
+
     const wsUrl = getWebSocketUrl();
+    console.log("[Signaling] Đang kết nối tới:", wsUrl);
+    updateStatus('waiting', `Đang kết nối máy chủ Signaling (${wsUrl.includes('render') ? 'Cloud' : 'Local'})...`);
 
     try {
+        if (socket) {
+            try { socket.close(); } catch (_) {}
+            socket = null;
+        }
+
         socket = new WebSocket(wsUrl);
 
         socket.onopen = () => {
+            console.log("[Signaling] Đã kết nối WebSocket thành công!");
             socket.send(JSON.stringify(initialMsg));
         };
 
@@ -2037,14 +2044,24 @@ function connectWebSocketAndSend(initialMsg) {
 
         socket.onerror = (err) => {
             console.error("WebSocket error:", err);
-            alert("Không thể kết nối đến máy chủ WebSocket. Vui lòng thử lại!");
+            showSyncNotification("⚠️ Không thể kết nối máy chủ WebSocket. Nếu máy chủ Render đang khởi động, vui lòng thử lại sau vài giây!", 4000);
+            updateStatus('waiting', "Chưa kết nối được máy chủ. Vui lòng bấm thử lại!");
             btnCreateRoom.disabled = false;
             btnCreateRoom.innerText = "➕ Tạo phòng mới";
             btnJoinRoom.disabled = false;
             btnJoinRoom.innerText = "Vào phòng";
         };
+
+        socket.onclose = () => {
+            console.log("[Signaling] WebSocket đã đóng.");
+        };
     } catch (e) {
         console.error("Lỗi tạo WebSocket:", e);
+        showSyncNotification("⚠️ Lỗi khởi tạo WebSocket: " + (e.message || e), 4000);
+        btnCreateRoom.disabled = false;
+        btnCreateRoom.innerText = "➕ Tạo phòng mới";
+        btnJoinRoom.disabled = false;
+        btnJoinRoom.innerText = "Vào phòng";
     }
 }
 
