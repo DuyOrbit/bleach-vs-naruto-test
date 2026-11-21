@@ -886,24 +886,8 @@ function dispatchFlashKeyEvent(type, flashKeyInfo) {
         ev = new KeyboardEvent(type, eventInit);
     }
 
-    if (rufflePlayer && rufflePlayer.shadowRoot) {
-        const shadowContainer = rufflePlayer.shadowRoot.getElementById('container') || rufflePlayer.shadowRoot.querySelector('#container');
-        if (shadowContainer) {
-            shadowContainer.dispatchEvent(ev);
-        }
-        const shadowCanvas = rufflePlayer.shadowRoot.querySelector('canvas');
-        if (shadowCanvas && shadowCanvas !== ruffleCanvas) {
-            shadowCanvas.dispatchEvent(ev);
-        }
-    }
-    if (ruffleCanvas) {
-        ruffleCanvas.dispatchEvent(ev);
-    }
-    if (rufflePlayer) {
-        rufflePlayer.dispatchEvent(ev);
-    }
-    window.dispatchEvent(ev);
-    document.dispatchEvent(ev);
+    const target = ruffleCanvas || rufflePlayer || document;
+    target.dispatchEvent(ev);
 }
 
 // ==========================================
@@ -3592,16 +3576,16 @@ const bvnBridge = {
 
         // 2. Thử các callback ExternalInterface chuẩn nếu bản SWF có hỗ trợ
         let res = this.call('startCustomMatch', p1, p2, p1Assist, p2Assist, stage, modo);
-        if (res === null) res = this.call('startMatch', p1, p2, p1Assist, p2Assist, stage, modo);
-        if (res !== null) {
+        if (res === null || res === undefined) res = this.call('startMatch', p1, p2, p1Assist, p2Assist, stage, modo);
+        if (res !== null && res !== undefined && res !== 'err') {
             console.log('[BVN Bridge] startMatch ExternalInterface thành công ->', res);
             return res;
         }
 
         // 3. Với bản game.swf (BVN 2.6) chạy trên Flash/Ruffle:
-        // Chạy Macro Virtual Driver tự động điều khiển vào thẳng màn hình chiến đấu!
-        console.log(`[BVN Bridge] Khởi chạy Macro Virtual Driver tự động chọn tướng & trợ thủ vào trận...`);
-        autoEnterBvn26Match(p1, p2, p1Assist, p2Assist);
+        // Chạy Macro Virtual Driver tự động điều hướng đúng tọa độ tướng & trợ thủ vào trận!
+        console.log(`[BVN Bridge] Khởi chạy Macro Virtual Driver tự động chọn tướng & trợ thủ vào trận: P1=${p1}(+${p1Assist}) vs P2=${p2}(+${p2Assist}) | Stage=${stage}`);
+        autoEnterBvn26Match(p1, p2, p1Assist, p2Assist, stage, modo);
         return { ok: true, driver: 'macro_bvn26' };
     },
     getBattleState() {
@@ -3652,42 +3636,78 @@ const bvnBridge = {
 window.bvnBridge = bvnBridge;
 
 // Macro Virtual Driver tự động điều khiển vào thẳng màn hình chiến đấu cho BVN 2.6
-function autoEnterBvn26Match(p1, p2, p1Assist, p2Assist) {
-    focusGame();
-    const p1Down = FLASH_NATIVE_KEYS.p1.DOWN;
-    const p1Confirm = FLASH_NATIVE_KEYS.p1.ATTACK;
-    const p2Confirm = FLASH_NATIVE_KEYS.p2.ATTACK;
-
-    // Bước 1: Điều hướng Menu chính xuống mục "Vs Human" (Đấu 2 Người) và bấm chọn
-    dispatchFlashKeyEvent('keydown', p1Down);
-    setTimeout(() => {
-        dispatchFlashKeyEvent('keyup', p1Down);
-        dispatchFlashKeyEvent('keydown', p1Confirm);
+// Di chuyển con trỏ P1 & P2 theo đúng tọa độ (row, col) của tướng & trợ thủ đã chọn
+function sendMacroKeyStep(keyObj, holdMs = 90) {
+    return new Promise(resolve => {
+        dispatchFlashKeyEvent('keydown', keyObj);
         setTimeout(() => {
-            dispatchFlashKeyEvent('keyup', p1Confirm);
+            dispatchFlashKeyEvent('keyup', keyObj);
+            setTimeout(resolve, 110);
+        }, holdMs);
+    });
+}
 
-            // Bước 2: Tại màn hình Chọn Tướng, xác nhận Tướng chính P1 & P2
-            setTimeout(() => {
-                dispatchFlashKeyEvent('keydown', p1Confirm);
-                dispatchFlashKeyEvent('keydown', p2Confirm);
-                setTimeout(() => {
-                    dispatchFlashKeyEvent('keyup', p1Confirm);
-                    dispatchFlashKeyEvent('keyup', p2Confirm);
+async function moveCursorToGrid(playerKeys, startPos, targetPos) {
+    if (!targetPos) return;
+    const dRow = targetPos.row - startPos.row;
+    const dCol = targetPos.col - startPos.col;
+    const vKey = dRow > 0 ? playerKeys.DOWN : playerKeys.UP;
+    const hKey = dCol > 0 ? playerKeys.RIGHT : playerKeys.LEFT;
 
-                    // Bước 3: Xác nhận Trợ thủ P1 & P2 ➔ Game vào thẳng trận đấu!
-                    setTimeout(() => {
-                        dispatchFlashKeyEvent('keydown', p1Confirm);
-                        dispatchFlashKeyEvent('keydown', p2Confirm);
-                        setTimeout(() => {
-                            dispatchFlashKeyEvent('keyup', p1Confirm);
-                            dispatchFlashKeyEvent('keyup', p2Confirm);
-                            console.log('[Macro BVN 2.6] Đã tự động chọn tướng & trợ thủ vào trận thành công!');
-                        }, 100);
-                    }, 500);
-                }, 100);
-            }, 600);
-        }, 100);
-    }, 150);
+    for (let i = 0; i < Math.abs(dRow); i++) {
+        await sendMacroKeyStep(vKey);
+    }
+    for (let i = 0; i < Math.abs(dCol); i++) {
+        await sendMacroKeyStep(hKey);
+    }
+}
+
+async function autoEnterBvn26Match(p1, p2, p1Assist, p2Assist, stage, modo = 3) {
+    focusGame();
+    const p1Keys = FLASH_NATIVE_KEYS.p1;
+    const p2Keys = FLASH_NATIVE_KEYS.p2;
+
+    const p1Item = findRosterItem(p1);
+    const p2Item = findRosterItem(p2);
+    const p1AssistItem = findAssistItem(p1Assist);
+    const p2AssistItem = findAssistItem(p2Assist);
+
+    // Bước 1: Điều hướng Menu chính từ Normal (0) xuống:
+    // 1: Team | 2: Vs Com | 3: Vs Human (Đấu 2 Người)
+    const menuSteps = (modo === 2) ? 2 : 3;
+    for (let i = 0; i < menuSteps; i++) {
+        await sendMacroKeyStep(p1Keys.DOWN, 100);
+    }
+    // Đợi vòng xoay Menu dừng hẳn ở Vs Human trước khi bấm Chọn
+    await new Promise(r => setTimeout(r, 450));
+    await sendMacroKeyStep(p1Keys.ATTACK, 140);
+    // Đợi hiệu ứng chuyển cảnh từ Menu chính -> Chọn Tướng hoàn tất hoàn toàn
+    await new Promise(r => setTimeout(r, 2800));
+
+    // Bước 2: Tại màn hình Chọn Tướng (P1 bắt đầu ở 4,4 Ichigo; P2 bắt đầu ở 4,5 Naruto)
+    await Promise.all([
+        moveCursorToGrid(p1Keys, { row: 4, col: 4 }, p1Item?.pos),
+        moveCursorToGrid(p2Keys, { row: 4, col: 5 }, p2Item?.pos)
+    ]);
+    await new Promise(r => setTimeout(r, 300));
+    await sendMacroKeyStep(p1Keys.ATTACK, 140);
+    if (modo === 3) {
+        await sendMacroKeyStep(p2Keys.ATTACK, 140);
+    }
+    // Đợi hiệu ứng chuyển cảnh từ Chọn Tướng -> Chọn Trợ Thủ hoàn tất hoàn toàn
+    await new Promise(r => setTimeout(r, 2500));
+
+    // Bước 3: Tại màn hình Chọn Trợ Thủ (P1 bắt đầu ở 2,4 Kon; P2 bắt đầu ở 2,5 Gaara)
+    await Promise.all([
+        moveCursorToGrid(p1Keys, { row: 2, col: 4 }, p1AssistItem?.pos),
+        moveCursorToGrid(p2Keys, { row: 2, col: 5 }, p2AssistItem?.pos)
+    ]);
+    await new Promise(r => setTimeout(r, 300));
+    await sendMacroKeyStep(p1Keys.ATTACK, 140);
+    if (modo === 3) {
+        await sendMacroKeyStep(p2Keys.ATTACK, 140);
+    }
+    console.log(`[Macro BVN 2.6] Đã chọn xong: P1=${p1Item?.id}(+${p1AssistItem?.id}) vs P2=${p2Item?.id}(+${p2AssistItem?.id}) | Stage=${stage}`);
 }
 
 // Web Shell UI Elements
@@ -3836,79 +3856,101 @@ if (btnWsEndMatch) {
 }
 
 // ==========================================
-// 10B. SẢNH CHỌN TƯỚNG BAN/PICK ESPORTS (DRAFT LOBBY)
+// 10B. NGUỒN DỮ LIỆU DUY NHẤT (SINGLE SOURCE OF TRUTH) & SẢNH BAN/PICK ESPORTS
+// Dùng chung 100% cho cả Sảnh Ban/Pick và Web Shell Chọn Tướng
 // ==========================================
-const BAN_PICK_ROSTER = {
+const BVN_MASTER_ROSTER = {
     bleach: [
-        { id: '一护', name: 'Ichigo Kurosaki', sub: 'Thần Chết', icon: '🗡️' },
-        { id: '一护万解', name: 'Ichigo Bankai', sub: 'Vạn Giải', icon: '⚡' },
-        { id: '一护虚化', name: 'Ichigo Hollow', sub: 'Mặt Nạ Hư', icon: '🎭' },
-        { id: '白一护', name: 'White Ichigo', sub: 'Bạch Nguyệt', icon: '⚪' },
-        { id: '牛头白一护', name: 'Vasto Lorde', sub: 'Hư Vương', icon: '👹' },
-        { id: '露其雅', name: 'Rukia Kuchiki', sub: 'Tuyết Hoa', icon: '❄️' },
-        { id: '露其雅始解', name: 'Rukia Shikai', sub: 'Băng Vũ', icon: '🌨️' },
-        { id: '日番谷', name: 'Hitsugaya', sub: 'Đội Trưởng 10', icon: '🧊' },
-        { id: '日番谷万解', name: 'Hitsugaya Bankai', sub: 'Đại Hồng Liên', icon: '🐉' },
-        { id: '白哉', name: 'Byakuya', sub: 'Thiên Bản Anh', icon: '🌸' },
-        { id: '恋次', name: 'Renji Abarai', sub: 'Xà Vĩ Hoàn', icon: '🐍' },
-        { id: '银', name: 'Gin Ichimaru', sub: 'Thần Thương', icon: '🗡️' },
-        { id: '蓝染', name: 'Aizen Sosuke', sub: 'Kính Hoa Thủy Nguyệt', icon: '👓' },
-        { id: '剑八', name: 'Kenpachi', sub: 'Đội 11 Quỷ Kiếm', icon: '⚔️' },
-        { id: '小乌', name: 'Ulquiorra', sub: 'Espada No.4', icon: '🦇' },
-        { id: '碎蜂', name: 'Soi Fon', sub: 'Tước Phong', icon: '🐝' },
-        { id: '葛力姆乔', name: 'Grimmjow', sub: 'Espada No.6', icon: '🐾' },
-        { id: '蒂雅', name: 'Harribel', sub: 'Espada No.3', icon: '🦈' },
-        { id: '史塔克', name: 'Coyote Starrk', sub: 'Espada No.1', icon: '🐺' },
-        { id: '茶渡', name: 'Yasutora Chad', sub: 'Cự Thần Tí', icon: '🥊' },
-        { id: '石田', name: 'Uryu Ishida', sub: 'Diệt Khước Sư', icon: '🏹' },
-        { id: '一角', name: 'Ikkaku', sub: 'Nhất Giác', icon: '🎋' },
-        { id: '涅茧利', name: 'Mayuri', sub: 'KHOA HỌC GIA', icon: '🧪' }
+        { id: '一护', name: 'Ichigo Kurosaki', sub: 'Thần Chết', icon: '🗡️', pos: { row: 4, col: 4 } },
+        { id: '一护万解', name: 'Ichigo Bankai', sub: 'Vạn Giải', icon: '⚡', pos: { row: 3, col: 4 } },
+        { id: '一护虚化', name: 'Ichigo Hollow', sub: 'Mặt Nạ Hư', icon: '🎭', pos: { row: 0, col: 0 } },
+        { id: '白一护', name: 'White Ichigo', sub: 'Bạch Nguyệt', icon: '⚪', pos: { row: 0, col: 0 } },
+        { id: '牛头白一护', name: 'Vasto Lorde', sub: 'Hư Vương', icon: '👹', pos: { row: 0, col: 0 } },
+        { id: '露其雅', name: 'Rukia Kuchiki', sub: 'Tuyết Hoa', icon: '❄️', pos: { row: 4, col: 3 } },
+        { id: '露其雅始解', name: 'Rukia Shikai', sub: 'Băng Vũ', icon: '🌨️', pos: { row: 3, col: 3 } },
+        { id: '日番谷', name: 'Hitsugaya Toshiro', sub: 'Đội Trưởng 10', icon: '🧊', pos: { row: 4, col: 1 } },
+        { id: '日番谷万解', name: 'Hitsugaya Bankai', sub: 'Đại Hồng Liên', icon: '🐉', pos: { row: 3, col: 1 } },
+        { id: '白哉', name: 'Byakuya Kuchiki', sub: 'Thiên Bản Anh', icon: '🌸', pos: { row: 4, col: 0 } },
+        { id: '恋次', name: 'Renji Abarai', sub: 'Xà Vĩ Hoàn', icon: '🐍', pos: { row: 4, col: 2 } },
+        { id: '银', name: 'Gin Ichimaru', sub: 'Thần Thương', icon: '🗡️', pos: { row: 2, col: 1 } },
+        { id: '蓝染', name: 'Aizen Sosuke', sub: 'Kính Hoa Thủy Nguyệt', icon: '👓', pos: { row: 0, col: 1 } },
+        { id: '剑八', name: 'Kenpachi Zaraki', sub: 'Đội 11 Quỷ Kiếm', icon: '⚔️', pos: { row: 2, col: 4 } },
+        { id: '小乌', name: 'Ulquiorra Cifer', sub: 'Espada No.4', icon: '🦇', pos: { row: 2, col: 0 } },
+        { id: '茶渡', name: 'Yasutora Chad', sub: 'Cự Thần Tí', icon: '🥊', pos: { row: 3, col: 0 } },
+        { id: '石田', name: 'Uryu Ishida', sub: 'Diệt Khước Sư', icon: '🏹', pos: { row: 3, col: 2 } },
+        { id: '一角', name: 'Ikkaku Madarame', sub: 'Nhất Giác', icon: '🎋', pos: { row: 2, col: 3 } },
+        { id: '涅茧利', name: 'Mayuri Kurotsuchi', sub: 'Khoa Học Gia', icon: '🧪', pos: { row: 2, col: 2 } }
     ],
     naruto: [
-        { id: '鸣人', name: 'Naruto Uzumaki', sub: 'Hokage 7', icon: '🍥' },
-        { id: '仙鸣', name: 'Naruto Tiên Nhân', sub: 'Hiền Nhân Cóc', icon: '🐸' },
-        { id: '鸣人九尾', name: 'Naruto 1 Vĩ', sub: 'Áo Vĩ Thú', icon: '🦊' },
-        { id: '鸣人九尾实体', name: 'Naruto 4 Vĩ', sub: 'Hắc Vĩ Cuồng', icon: '💥' },
-        { id: '黄金鸣人', name: 'Golden Naruto', sub: 'Chakra Cửu Vĩ', icon: '✨' },
-        { id: '佐助', name: 'Sasuke Uchiha', sub: 'Chidori Lôi', icon: '⚡' },
-        { id: '佐助咒怨', name: 'Sasuke Chú Ấn', sub: 'Nguyền Ấn', icon: '🦅' },
-        { id: '须佐佐助', name: 'Sasuke Susanoo', sub: 'Vạn Hoa Đồng', icon: '👁️' },
-        { id: '卡卡西', name: 'Kakashi Hatake', sub: 'Sharingan', icon: '📖' },
-        { id: '小樱', name: 'Sakura Haruno', sub: 'Bách Hào Ấn', icon: '🌸' },
-        { id: '李洛克', name: 'Rock Lee', sub: 'Bát Môn', icon: '🥋' },
-        { id: '我爱罗', name: 'Gaara', sub: 'Kazekage Cát', icon: '🏺' },
-        { id: '日向宁次', name: 'Neji Hyuga', sub: 'Bát Quái Chưởng', icon: '☯️' },
-        { id: '自来也', name: 'Jiraiya', sub: 'Hao Kiệt Cóc', icon: '📜' },
-        { id: '鼬', name: 'Itachi Uchiha', sub: 'Tsukuyomi', icon: '🐦' },
-        { id: '佩恩', name: 'Pain Lục Đạo', sub: 'Thần La Thiên Chinh', icon: '🪐' },
-        { id: '斑', name: 'Madara Uchiha', sub: 'Chiến Thần', icon: '🔥' },
-        { id: '四代', name: 'Minato Namikaze', sub: 'Tia Chớp Vàng', icon: '⚡' },
-        { id: '佐井', name: 'Sai', sub: 'Họa Thú', icon: '🖌️' },
-        { id: '大蛇丸', name: 'Orochimaru', sub: 'Bạch Xà Tam Nin', icon: '🐍' },
-        { id: '水月', name: 'Suigetsu', sub: 'Thủy Hóa Kiếm', icon: '💧' },
-        { id: '迪达拉', name: 'Deidara', sub: 'Nổ Tung', icon: '💣' }
+        { id: '鸣人', name: 'Naruto Uzumaki', sub: 'Hokage 7', icon: '🍥', pos: { row: 4, col: 5 } },
+        { id: '鸣人九尾', name: 'Naruto 1 Vĩ', sub: 'Áo Vĩ Thú', icon: '🦊', pos: { row: 3, col: 5 } },
+        { id: '仙鸣', name: 'Naruto Tiên Nhân', sub: 'Hiền Nhân Cóc', icon: '🐸', pos: { row: 3, col: 6 } },
+        { id: '鸣人九尾实体', name: 'Naruto 4 Vĩ', sub: 'Hắc Vĩ Cuồng', icon: '💥', pos: { row: 3, col: 5 } },
+        { id: '黄金鸣人', name: 'Golden Naruto', sub: 'Chakra Cửu Vĩ', icon: '✨', pos: { row: 3, col: 6 } },
+        { id: '佐助', name: 'Sasuke Uchiha', sub: 'Chidori Lôi', icon: '⚡', pos: { row: 4, col: 7 } },
+        { id: '佐助咒怨', name: 'Sasuke Chú Ấn', sub: 'Nguyền Ấn', icon: '🦅', pos: { row: 3, col: 8 } },
+        { id: '佐助须佐', name: 'Sasuke Susanoo', sub: 'Vạn Hoa Đồng', icon: '👁️', pos: { row: 0, col: 9 } },
+        { id: '卡卡西', name: 'Kakashi Hatake', sub: 'Sharingan', icon: '📖', pos: { row: 4, col: 8 } },
+        { id: '樱', name: 'Sakura Haruno', sub: 'Bách Hào Ấn', icon: '🌸', pos: { row: 4, col: 6 } },
+        { id: '小李', name: 'Rock Lee', sub: 'Bát Môn', icon: '🥋', pos: { row: 4, col: 9 } },
+        { id: '我爱罗', name: 'Gaara', sub: 'Kazekage Cát', icon: '🏺', pos: { row: 2, col: 6 } },
+        { id: '宁次', name: 'Neji Hyuga', sub: 'Bát Quái Chưởng', icon: '☯️', pos: { row: 3, col: 7 } },
+        { id: '自来也', name: 'Jiraiya', sub: 'Hao Kiệt Cóc', icon: '📜', pos: { row: 1, col: 8 } },
+        { id: '鼬', name: 'Itachi Uchiha', sub: 'Tsukuyomi', icon: '🐦', pos: { row: 3, col: 9 } },
+        { id: '佩恩', name: 'Pain Lục Đạo', sub: 'Thần La Thiên Chinh', icon: '🪐', pos: { row: 2, col: 7 } },
+        { id: '小南', name: 'Konan', sub: 'Thiên Sứ Giấy', icon: '🕊️', pos: { row: 2, col: 8 } },
+        { id: '斑', name: 'Madara Uchiha', sub: 'Chiến Thần', icon: '🔥', pos: { row: 0, col: 7 } },
+        { id: '带土', name: 'Obito / Tobi', sub: 'Kamui', icon: '🎭', pos: { row: 0, col: 6 } },
+        { id: '四代', name: 'Minato Namikaze', sub: 'Tia Chớp Vàng', icon: '⚡', pos: { row: 0, col: 8 } },
+        { id: '大蛇丸', name: 'Orochimaru', sub: 'Bạch Xà Tam Nin', icon: '🐍', pos: { row: 2, col: 9 } },
+        { id: '迪达拉', name: 'Deidara', sub: 'Nổ Tung', icon: '💣', pos: { row: 2, col: 5 } },
+        { id: '重吾', name: 'Jugo', sub: 'Nguyền Ấn', icon: '💪', pos: { row: 1, col: 5 } },
+        { id: '香磷', name: 'Karin', sub: 'Cảm Tri', icon: '👓', pos: { row: 1, col: 6 } },
+        { id: '奇拉比', name: 'Killer Bee', sub: 'Bát Vĩ', icon: '🐙', pos: { row: 1, col: 7 } }
     ],
     guest: [
-        { id: '剑心', name: 'Kenshin Himura', sub: 'Phi Thiên Ngự Kiếm', icon: '🗡️' },
-        { id: '志志雄', name: 'Shishio Makoto', sub: 'Hỏa Kiếm Vô Hạn', icon: '🔥' }
+        { id: '剑心', name: 'Himura Kenshin', sub: 'Phi Thiên Ngự Kiếm', icon: '🗡️', pos: { row: 4, col: 4 } }
     ],
     assist: [
-        { id: '夜一', name: 'Yoruichi (Trợ thủ)', sub: 'Thuấn Thần Lôi Điện', icon: '⚡' },
-        { id: '我爱罗', name: 'Gaara (Trợ thủ)', sub: 'Khiên Sa Bảo Vệ', icon: '🏺' },
-        { id: '自来也', name: 'Jiraiya (Trợ thủ)', sub: 'Châm Địa Ngục', icon: '🐸' },
-        { id: '井上', name: 'Orihime (Trợ thủ)', sub: 'Thuẫn Hồi Sinh', icon: '🛡️' },
-        { id: '石田', name: 'Ishida (Trợ thủ)', sub: 'Mưa Tên Khí Công', icon: '🏹' },
-        { id: '手鞠', name: 'Temari (Trợ thủ)', sub: 'Cuồng Phong Quạt', icon: '🌪️' },
-        { id: '天天', name: 'Tenten (Trợ thủ)', sub: 'Bách Khí Liêm Đao', icon: '🗡️' },
-        { id: '松本', name: 'Matsumoto (Trợ thủ)', sub: 'Tro Tàn Phủ Kín', icon: '🌫️' },
-        { id: '纲手', name: 'Tsunade (Trợ thủ)', sub: 'Cấp Cứu Trị Liệu', icon: '💚' },
-        { id: '土影', name: 'Ohnoki (Trợ thủ)', sub: 'Trần Độn Nguyên Tử', icon: '🪨' },
-        { id: '雏田', name: 'Hinata (Trợ thủ)', sub: 'Bảo Hộ Nhu Quyền', icon: '💜' },
-        { id: '八千流', name: 'Yachiru (Trợ thủ)', sub: 'Kẹo Ngọt Cổ Động', icon: '🍬' },
-        { id: '涅音梦', name: 'Nemu (Trợ thủ)', sub: 'Dược Liệu Hồi Phục', icon: '💉' },
-        { id: '魂', name: 'Kon (Trợ thủ)', sub: 'Thú Bông Cản Đòn', icon: '🦁' }
+        { id: '夜一', name: 'Yoruichi (Trợ thủ)', sub: 'Thuấn Thần Lôi Điện', icon: '⚡', pos: { row: 2, col: 2 } },
+        { id: '我爱罗', name: 'Gaara (Trợ thủ)', sub: 'Khiên Sa Bảo Vệ', icon: '🏺', pos: { row: 2, col: 5 } },
+        { id: '魂', name: 'Kon (Trợ thủ)', sub: 'Thú Bông Cản Đòn', icon: '🦁', pos: { row: 2, col: 4 } },
+        { id: '织姬', name: 'Orihime (Trợ thủ)', sub: 'Thuẫn Hồi Sinh', icon: '🛡️', pos: { row: 2, col: 3 } },
+        { id: '石田', name: 'Ishida (Trợ thủ)', sub: 'Mưa Tên Khí Công', icon: '🏹', pos: { row: 2, col: 1 } },
+        { id: '手鞠', name: 'Temari (Trợ thủ)', sub: 'Cuồng Phong Quạt', icon: '🌪️', pos: { row: 2, col: 6 } },
+        { id: '天天', name: 'Tenten (Trợ thủ)', sub: 'Bách Khí Liêm Đao', icon: '🗡️', pos: { row: 2, col: 8 } },
+        { id: '剑八', name: 'Kenpachi (Trợ thủ)', sub: 'Xung Kích Toàn Lực', icon: '⚔️', pos: { row: 2, col: 0 } },
+        { id: '松本', name: 'Matsumoto / Ino (Trợ thủ)', sub: 'Tro Tàn Phủ Kín', icon: '🌫️', pos: { row: 2, col: 7 } },
+        { id: '纲手', name: 'Tsunade (Trợ thủ)', sub: 'Cấp Cứu Trị Liệu', icon: '💚', pos: { row: 1, col: 6 } },
+        { id: '四代', name: 'Minato (Trợ thủ)', sub: 'Phi Lôi Thần Trảm', icon: '⚡', pos: { row: 1, col: 8 } },
+        { id: '土影', name: 'Ohnoki (Trợ thủ)', sub: 'Trần Độn Nguyên Tử', icon: '🪨', pos: { row: 1, col: 7 } },
+        { id: '雏田', name: 'Hinata (Trợ thủ)', sub: 'Bảo Hộ Nhu Quyền', icon: '💜', pos: { row: 1, col: 5 } },
+        { id: '八千流', name: 'Yachiru (Trợ thủ)', sub: 'Kẹo Ngọt Cổ Động', icon: '🍬', pos: { row: 1, col: 3 } },
+        { id: '碎蜂', name: 'Soi Fon (Trợ thủ)', sub: 'Tước Phong Ảnh', icon: '🐝', pos: { row: 1, col: 2 } },
+        { id: '水月', name: 'Suigetsu (Trợ thủ)', sub: 'Thủy Đạn Trảm', icon: '💧', pos: { row: 0, col: 5 } },
+        { id: '涅音梦', name: 'Nemu (Trợ thủ)', sub: 'Dược Liệu Hồi Phục', icon: '💉', pos: { row: 0, col: 3 } },
+        { id: '佐井', name: 'Sai (Trợ thủ)', sub: 'Siêu Thú Ngụy Họa', icon: '🖌️', pos: { row: 0, col: 6 } },
+        { id: '蒂雅', name: 'Harribel (Trợ thủ)', sub: 'Thương Hải Triều', icon: '🦈', pos: { row: 0, col: 4 } },
+        { id: '葛力姆乔', name: 'Grimmjow (Trợ thủ)', sub: 'Vương Hư Thiểm', icon: '🐾', pos: { row: 1, col: 0 } },
+        { id: '牛头白一护', name: 'Vasto Lorde (Trợ thủ)', sub: 'Hư Thiểm Hủy Diệt', icon: '👹', pos: { row: 1, col: 4 } },
+        { id: '史塔克', name: 'Coyote Starrk (Trợ thủ)', sub: 'Cero Metralleta', icon: '🐺', pos: { row: 1, col: 1 } },
+        { id: '自来也', name: 'Jiraiya (Trợ thủ)', sub: 'Châm Địa Ngục', icon: '🐸', pos: { row: 1, col: 9 } },
+        { id: '志志雄', name: 'Shishio (Trợ thủ)', sub: 'Hỏa Kiếm Vô Hạn', icon: '🔥', pos: { row: 0, col: 9 } }
+    ],
+    stages: [
+        { id: '火影瀑布', name: 'Thác Thung Lũng Tận Cùng (火影瀑布)' },
+        { id: '木叶村', name: 'Làng Lá Konoha (木叶村)' },
+        { id: '宇智波村', name: 'Gia Tộc Uchiha (宇智波村)' },
+        { id: '温泉', name: 'Khu Suối Nước Nóng (温泉)' },
+        { id: '楼顶', name: 'Tầng Thượng Tòa Nhà (楼顶)' },
+        { id: '现世', name: 'Hiện Thế Karakura (现世)' },
+        { id: '流魂街', name: 'Phố Rukon (流魂街)' },
+        { id: '双极', name: 'Đài Hành Hình Sokyoku (双极)' },
+        { id: '静涎亭', name: 'Tĩnh Linh Đình (静涎亭)' },
+        { id: '尸魂界通道', name: 'Đường Hầm Senkaimon (尸魂界通道)' }
     ]
 };
+const BAN_PICK_ROSTER = BVN_MASTER_ROSTER;
 
 const banPickModal = document.getElementById('banPickModal');
 const btnOpenBanPick = document.getElementById('btnOpenBanPick');
@@ -3940,11 +3982,65 @@ let bpState = {
 };
 
 function findRosterItem(id) {
-    for (const cat of Object.values(BAN_PICK_ROSTER)) {
-        const found = cat.find(item => item.id === id);
+    for (const key of ['bleach', 'naruto', 'guest', 'assist']) {
+        const list = BVN_MASTER_ROSTER[key] || [];
+        const found = list.find(item => item.id === id);
         if (found) return found;
     }
-    return { id, name: id, sub: '', icon: '👤' };
+    return { id, name: id, sub: '', icon: '👤', pos: { row: 4, col: 4 } };
+}
+
+function findAssistItem(id) {
+    const found = (BVN_MASTER_ROSTER.assist || []).find(item => item.id === id);
+    if (found) return found;
+    return findRosterItem(id);
+}
+
+// Đồng bộ hóa danh sách từ 1 nguồn duy nhất sang cả Web Shell và Sảnh Ban/Pick
+function populateSharedRosterSelects() {
+    const wsP1Fighter = document.getElementById('wsP1Fighter');
+    const wsP2Fighter = document.getElementById('wsP2Fighter');
+    const wsP1Assist = document.getElementById('wsP1Assist');
+    const wsP2Assist = document.getElementById('wsP2Assist');
+    const wsStageSelect = document.getElementById('wsStageSelect');
+
+    const buildFighterOptions = (order) => {
+        return order.map(groupKey => {
+            const label = groupKey === 'bleach' ? 'Bleach (Sứ Mạng Thần Chết)' : groupKey === 'naruto' ? 'Naruto (Nhẫn Giả Làng Lá)' : 'Khách Mời (Guest)';
+            const opts = (BVN_MASTER_ROSTER[groupKey] || []).map(f => `<option value="${f.id}">${f.name} (${f.sub})</option>`).join('');
+            return `<optgroup label="${label}">${opts}</optgroup>`;
+        }).join('');
+    };
+
+    if (wsP1Fighter) {
+        wsP1Fighter.innerHTML = buildFighterOptions(['bleach', 'naruto', 'guest']);
+        wsP1Fighter.value = '一护';
+    }
+    if (wsP2Fighter) {
+        // P2 giữ thứ tự Naruto trước, Bleach sau nhưng cùng 100% ID chuẩn
+        wsP2Fighter.innerHTML = buildFighterOptions(['naruto', 'bleach', 'guest']);
+        wsP2Fighter.value = '鸣人';
+    }
+
+    const assistOptsHtml = (BVN_MASTER_ROSTER.assist || []).map(a => `<option value="${a.id}">${a.name}</option>`).join('');
+    if (wsP1Assist) {
+        wsP1Assist.innerHTML = assistOptsHtml;
+        wsP1Assist.value = '夜一';
+    }
+    if (wsP2Assist) {
+        wsP2Assist.innerHTML = assistOptsHtml;
+        wsP2Assist.value = '我爱罗';
+    }
+
+    const stageOptsHtml = (BVN_MASTER_ROSTER.stages || []).map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+    if (wsStageSelect) {
+        wsStageSelect.innerHTML = stageOptsHtml;
+        wsStageSelect.value = '火影瀑布';
+    }
+    if (bpStageSelect) {
+        bpStageSelect.innerHTML = stageOptsHtml;
+        bpStageSelect.value = bpState.stage || '火影瀑布';
+    }
 }
 
 function switchBpTab(tabName) {
@@ -4318,6 +4414,7 @@ if (btnLaunchMatch) {
 // 11. KHỞI ĐỘNG
 // ==========================================
 window.addEventListener('DOMContentLoaded', () => {
+    populateSharedRosterSelects();
     setNetcodeMode(currentNetcodeMode, false);
     wakeUpSignalingServer();
     renderGuides();
