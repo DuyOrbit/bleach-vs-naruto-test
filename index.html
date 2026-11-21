@@ -25,7 +25,8 @@
             quality: "high",
             preferredRenderer: "webgl",
             forceScale: true,
-            backgroundExecutionMode: "mainThread"
+            backgroundExecutionMode: "mainThread",
+            allowScriptAccess: true
         };
     </script>
     <!-- Ruffle (Flash Emulator WebAssembly) -->
@@ -66,9 +67,13 @@
             <div class="game-toolbar">
                 <div class="toolbar-left">
                     <span class="role-badge role-solo" id="roleBadge">🎮 Chế độ: Chơi đơn</span>
-                    <span class="netcode-badge-fixed" title="1 Trận Chung: Máy Host chạy game và truyền hình ảnh 60FPS HD, máy Khách điều khiển P2. 100% Khớp trận!">
-                        📺 60FPS HD Remote Play (1 Trận Chung • 100% Khớp Trận)
-                    </span>
+                    <div class="netcode-selector-wrapper" title="Chọn chế độ kết nối Online">
+                        <label for="netplayModeSelect" class="netplay-mode-label">Mạng:</label>
+                        <select id="netplayModeSelect" class="netplay-mode-select">
+                            <option value="input_sync" selected>⚡ P2P Input Sync (Siêu nhẹ • 0 MB Video • Chuẩn Animugen)</option>
+                            <option value="stream">📺 Remote Play (Stream Video 30FPS • 1 Trận Chung)</option>
+                        </select>
+                    </div>
                     <button id="btnGamepadStatus" class="btn-gamepad-badge" title="Nhấp để kiểm tra & cài đặt phím tay cầm (Gamepad)">
                         <span class="gamepad-icon">🎮</span>
                         <span id="gamepadStatusText">Tay cầm: Chưa cắm</span>
@@ -90,6 +95,9 @@
                     </div>
                     <button id="btnShareScreen" class="btn btn-primary btn-sm btn-screen-share hidden" title="Chia sẻ Tab Game 60FPS bằng card đồ họa GPU siêu mượt cho Khách">
                         📺 Bật Tab 60FPS GPU
+                    </button>
+                    <button id="btnOpenWebShell" class="btn btn-warning btn-sm btn-webshell" title="Mở bảng Chọn Tướng Web Shell & Can thiệp code trực tiếp">
+                        ⚡ Chọn Tướng Web Shell
                     </button>
                     <button id="btnOpenKeyModal" class="btn btn-secondary btn-sm" title="Tùy chỉnh phím bấm cho P1, P2 và Tay cầm Gamepad">
                         ⚙️ Cài đặt phím & Tay cầm
@@ -409,6 +417,268 @@
                 <div class="modal-footer">
                     <button id="btnResetDefaultKeys" class="btn btn-secondary">Khôi phục mặc định</button>
                     <button id="btnSaveKeys" class="btn btn-primary">✓ Lưu Cài Đặt</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- MODAL WEB SHELL / CHỌN TƯỚNG & CAN THIỆP CODE KIỂU ANIMUGEN -->
+        <div id="webShellModal" class="modal-backdrop hidden">
+            <div class="modal-card modal-card-webshell">
+                <div class="modal-header">
+                    <div class="modal-header-title">
+                        <span class="webshell-badge">WEB SHELL ENGINE</span>
+                        <h3>⚡ CHỌN TƯỚNG & CAN THIỆP TRẬN ĐẤU (EXTERNAL INTERFACE)</h3>
+                    </div>
+                    <button id="btnCloseWebShellModal" class="btn-close" title="Đóng">&times;</button>
+                </div>
+                <div class="modal-body webshell-body">
+                    <div class="webshell-mode-bar">
+                        <label class="mode-label">Chế độ chơi:</label>
+                        <div class="mode-radios">
+                            <label class="radio-label">
+                                <input type="radio" name="wsModo" value="3" checked>
+                                <span>⚔️ 2 Người (2P Versus)</span>
+                            </label>
+                            <label class="radio-label">
+                                <input type="radio" name="wsModo" value="2">
+                                <span>🤖 Đấu Máy (VS CPU)</span>
+                            </label>
+                            <label class="radio-label">
+                                <input type="radio" name="wsModo" value="4">
+                                <span>🎯 Luyện tập (Training)</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="webshell-grid">
+                        <!-- Cột P1 -->
+                        <div class="webshell-player-card p1-card">
+                            <div class="card-p-header">
+                                <span class="player-tag tag-p1">PLAYER 1</span>
+                                <span class="player-note">Điều khiển: Phím W/A/S/D + J/K/L/U/I/O</span>
+                            </div>
+                            <div class="form-group">
+                                <label for="wsP1Fighter">Tướng chính (Fighter):</label>
+                                <select id="wsP1Fighter" class="form-select select-fighter">
+                                    <optgroup label="Bleach (Sứ Mạng Thần Chết)">
+                                        <option value="一护" selected>Ichigo (Kurosaki Ichigo)</option>
+                                        <option value="一护万解">Ichigo Bankai (卍解)</option>
+                                        <option value="一护虚化">Ichigo Hollow (虚化)</option>
+                                        <option value="白一护">White Ichigo (内虚)</option>
+                                        <option value="一护2">Ichigo 0 (零段)</option>
+                                        <option value="日番谷">Hitsugaya Toshiro (日番谷·冬狮郎)</option>
+                                        <option value="日番谷万解">Hitsugaya Bankai (卍解)</option>
+                                        <option value="露其雅">Rukia Kuchiki (朽木·露琪亚)</option>
+                                        <option value="露其雅始解">Rukia Shikai (始解)</option>
+                                        <option value="恋次">Renji Abarai (阿散井·恋次)</option>
+                                        <option value="白哉">Byakuya Kuchiki (朽木·白哉)</option>
+                                        <option value="蓝染">Aizen Sosuke (蓝染)</option>
+                                        <option value="银">Gin Ichimaru (市丸·银)</option>
+                                        <option value="剑八">Kenpachi Zaraki (更木·剑八)</option>
+                                        <option value="小乌">Ulquiorra Cifer (乌尔奇奥拉)</option>
+                                        <option value="茶渡">Yasutora Sado / Chad (茶渡·泰虎)</option>
+                                        <option value="石田">Uryu Ishida (石田·雨龙)</option>
+                                        <option value="一角">Ikkaku Madarame (斑目·一角)</option>
+                                        <option value="涅茧利">Mayuri Kurotsuchi (涅茧利)</option>
+                                    </optgroup>
+                                    <optgroup label="Naruto (Nhẫn Giả Làng Lá)">
+                                        <option value="鸣人">Naruto Uzumaki (漩涡·鸣人)</option>
+                                        <option value="鸣人九尾">Naruto 1 Vĩ (一尾)</option>
+                                        <option value="鸣人九尾实体">Naruto 4 Vĩ (四尾)</option>
+                                        <option value="仙鸣">Naruto Tiên Nhân (仙人)</option>
+                                        <option value="黄金鸣人">Golden Naruto (黄金鸣人)</option>
+                                        <option value="佐助">Sasuke Uchiha (宇智波·佐助)</option>
+                                        <option value="佐助咒怨">Sasuke Nguyền Ấn (咒怨)</option>
+                                        <option value="佐助须佐">Sasuke Susanoo (须佐能乎)</option>
+                                        <option value="卡卡西">Kakashi Hatake (旗木·卡卡西)</option>
+                                        <option value="樱">Sakura Haruno (春野·樱)</option>
+                                        <option value="小李">Rock Lee (李·洛克)</option>
+                                        <option value="宁次">Neji Hyuga (日向·宁次)</option>
+                                        <option value="我爱罗">Gaara (我爱罗)</option>
+                                        <option value="手鞠">Temari (手鞠)</option>
+                                        <option value="鼬">Itachi Uchiha (宇智波·鼬)</option>
+                                        <option value="自来也">Jiraiya (自来也)</option>
+                                        <option value="大蛇丸">Orochimaru (大蛇丸)</option>
+                                        <option value="佩恩">Pain (佩恩)</option>
+                                        <option value="小南">Konan (小南)</option>
+                                        <option value="带土">Obito Uchiha (带土)</option>
+                                        <option value="迪达拉">Deidara (迪达拉)</option>
+                                        <option value="重吾">Jugo (天秤·重吾)</option>
+                                        <option value="香磷">Karin (香磷)</option>
+                                        <option value="奇拉比">Killer Bee (奇拉比)</option>
+                                    </optgroup>
+                                    <optgroup label="Khách mời Đặc biệt">
+                                        <option value="剑心">Himura Kenshin (绯村·剑心)</option>
+                                    </optgroup>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="wsP1Assist">Nhân vật Hỗ trợ (Assist / 辅助):</label>
+                                <select id="wsP1Assist" class="form-select select-assist">
+                                    <option value="夜一" selected>Yoruichi (四枫院·夜一)</option>
+                                    <option value="我爱罗">Gaara (我爱罗)</option>
+                                    <option value="魂">Kon (魂)</option>
+                                    <option value="织姬">Orihime (井上·织姬)</option>
+                                    <option value="石田">Ishida (石田·雨龙)</option>
+                                    <option value="手鞠">Temari (手鞠)</option>
+                                    <option value="天天">Tenten (天天)</option>
+                                    <option value="剑八">Kenpachi (更木·剑八)</option>
+                                    <option value="松本">Ino / Matsumoto (松本·井野)</option>
+                                    <option value="纲手">Tsunade (纲手)</option>
+                                    <option value="四代">Minato Namikaze (四代火影)</option>
+                                    <option value="土影">Tsuchikage Ohnoki (土影)</option>
+                                    <option value="雏田">Hinata Hyuga (日向·雏田)</option>
+                                    <option value="八千流">Yachiru Kusajishi (草鹿·八千流)</option>
+                                    <option value="碎蜂">Soi Fon (碎蜂)</option>
+                                    <option value="水月">Suigetsu (鬼灯·水月)</option>
+                                    <option value="涅音梦">Nemu Kurotsuchi (涅音梦)</option>
+                                    <option value="佐井">Sai (佐井)</option>
+                                    <option value="斑">Madara Uchiha (宇智波·斑)</option>
+                                    <option value="蒂雅">Tier Harribel (蒂雅·赫丽贝尔)</option>
+                                    <option value="葛力姆乔">Grimmjow (葛力姆乔)</option>
+                                    <option value="牛头白一护">Vasto Lorde Ichigo (一护·虚·二段)</option>
+                                    <option value="史塔克">Coyote Starrk (柯雅泰·史塔克)</option>
+                                    <option value="志志雄">Shishio Makoto (志志雄·真实)</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- Cột P2 -->
+                        <div class="webshell-player-card p2-card">
+                            <div class="card-p-header">
+                                <span class="player-tag tag-p2">PLAYER 2</span>
+                                <span class="player-note">Điều khiển: Phím Mũi tên + Num 1..6</span>
+                            </div>
+                            <div class="form-group">
+                                <label for="wsP2Fighter">Tướng chính (Fighter):</label>
+                                <select id="wsP2Fighter" class="form-select select-fighter">
+                                    <optgroup label="Naruto (Nhẫn Giả Làng Lá)">
+                                        <option value="鸣人" selected>Naruto Uzumaki (漩涡·鸣人)</option>
+                                        <option value="鸣人九尾">Naruto 1 Vĩ (一尾)</option>
+                                        <option value="鸣人九尾实体">Naruto 4 Vĩ (四尾)</option>
+                                        <option value="仙鸣">Naruto Tiên Nhân (仙人)</option>
+                                        <option value="黄金鸣人">Golden Naruto (黄金鸣人)</option>
+                                        <option value="佐助">Sasuke Uchiha (宇智波·佐助)</option>
+                                        <option value="佐助咒怨">Sasuke Nguyền Ấn (咒怨)</option>
+                                        <option value="佐助须佐">Sasuke Susanoo (须佐能乎)</option>
+                                        <option value="卡卡西">Kakashi Hatake (旗木·卡卡西)</option>
+                                        <option value="樱">Sakura Haruno (春野·樱)</option>
+                                        <option value="小李">Rock Lee (李·洛克)</option>
+                                        <option value="宁次">Neji Hyuga (日向·宁次)</option>
+                                        <option value="我爱罗">Gaara (我爱罗)</option>
+                                        <option value="手鞠">Temari (手鞠)</option>
+                                        <option value="鼬">Itachi Uchiha (宇智波·鼬)</option>
+                                        <option value="自来也">Jiraiya (自来也)</option>
+                                        <option value="大蛇丸">Orochimaru (大蛇丸)</option>
+                                        <option value="佩恩">Pain (佩恩)</option>
+                                        <option value="小南">Konan (小南)</option>
+                                        <option value="带土">Obito Uchiha (带土)</option>
+                                        <option value="迪达拉">Deidara (迪达拉)</option>
+                                        <option value="重吾">Jugo (天秤·重吾)</option>
+                                        <option value="香磷">Karin (香磷)</option>
+                                        <option value="奇拉比">Killer Bee (奇拉比)</option>
+                                    </optgroup>
+                                    <optgroup label="Bleach (Sứ Mạng Thần Chết)">
+                                        <option value="一护">Ichigo (Kurosaki Ichigo)</option>
+                                        <option value="一护万解">Ichigo Bankai (卍解)</option>
+                                        <option value="一护虚化">Ichigo Hollow (虚化)</option>
+                                        <option value="白一护">White Ichigo (内虚)</option>
+                                        <option value="一护2">Ichigo 0 (零段)</option>
+                                        <option value="日番谷">Hitsugaya Toshiro (日番谷·冬狮郎)</option>
+                                        <option value="日番谷万解">Hitsugaya Bankai (卍解)</option>
+                                        <option value="露其雅">Rukia Kuchiki (朽木·露琪亚)</option>
+                                        <option value="露其雅始解">Rukia Shikai (始解)</option>
+                                        <option value="恋次">Renji Abarai (阿散井·恋次)</option>
+                                        <option value="白哉">Byakuya Kuchiki (朽木·白哉)</option>
+                                        <option value="蓝染">Aizen Sosuke (蓝染)</option>
+                                        <option value="银">Gin Ichimaru (市丸·银)</option>
+                                        <option value="剑八">Kenpachi Zaraki (更木·剑八)</option>
+                                        <option value="小乌">Ulquiorra Cifer (乌尔奇奥拉)</option>
+                                        <option value="茶渡">Yasutora Sado / Chad (茶渡·泰虎)</option>
+                                        <option value="石田">Uryu Ishida (石田·雨龙)</option>
+                                        <option value="一角">Ikkaku Madarame (斑目·一角)</option>
+                                        <option value="涅茧利">Mayuri Kurotsuchi (涅茧利)</option>
+                                    </optgroup>
+                                    <optgroup label="Khách mời Đặc biệt">
+                                        <option value="剑心">Himura Kenshin (绯村·剑心)</option>
+                                    </optgroup>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="wsP2Assist">Nhân vật Hỗ trợ (Assist / 辅助):</label>
+                                <select id="wsP2Assist" class="form-select select-assist">
+                                    <option value="我爱罗" selected>Gaara (我爱罗)</option>
+                                    <option value="夜一">Yoruichi (四枫院·夜一)</option>
+                                    <option value="魂">Kon (魂)</option>
+                                    <option value="织姬">Orihime (井上·织姬)</option>
+                                    <option value="石田">Ishida (石田·雨龙)</option>
+                                    <option value="手鞠">Temari (手鞠)</option>
+                                    <option value="天天">Tenten (天天)</option>
+                                    <option value="剑八">Kenpachi (更木·剑八)</option>
+                                    <option value="松本">Ino / Matsumoto (松本·井野)</option>
+                                    <option value="纲手">Tsunade (纲手)</option>
+                                    <option value="四代">Minato Namikaze (四代火影)</option>
+                                    <option value="土影">Tsuchikage Ohnoki (土影)</option>
+                                    <option value="雏田">Hinata Hyuga (日向·雏田)</option>
+                                    <option value="八千流">Yachiru Kusajishi (草鹿·八千流)</option>
+                                    <option value="碎蜂">Soi Fon (碎蜂)</option>
+                                    <option value="水月">Suigetsu (鬼灯·水月)</option>
+                                    <option value="涅音梦">Nemu Kurotsuchi (涅音梦)</option>
+                                    <option value="佐井">Sai (佐井)</option>
+                                    <option value="斑">Madara Uchiha (宇智波·斑)</option>
+                                    <option value="蒂雅">Tier Harribel (蒂雅·赫丽贝尔)</option>
+                                    <option value="葛力姆乔">Grimmjow (葛力姆乔)</option>
+                                    <option value="牛头白一护">Vasto Lorde Ichigo (一护·虚·二段)</option>
+                                    <option value="史塔克">Coyote Starrk (柯雅泰·史塔克)</option>
+                                    <option value="志志雄">Shishio Makoto (志志雄·真实)</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Chọn Map & Can Thiệp Trận -->
+                    <div class="webshell-stage-bar">
+                        <div class="form-group form-group-inline">
+                            <label for="wsStageSelect">🗺️ Bản đồ thi đấu (Stage):</label>
+                            <select id="wsStageSelect" class="form-select select-stage">
+                                <option value="火影瀑布" selected>Thác Thung Lũng Tận Cùng (火影瀑布 / 终结之谷)</option>
+                                <option value="木叶村">Làng Lá (木叶村)</option>
+                                <option value="宇智波村">Gia Tộc Uchiha (宇智波一族 / 宇智波村)</option>
+                                <option value="温泉">Khu Suối Nước Nóng (温泉)</option>
+                                <option value="楼顶">Tầng Thượng Tòa Nhà (楼顶)</option>
+                                <option value="现世">Hiện Thế Karakura (现世)</option>
+                                <option value="流魂街">Phố Rukon (流魂街)</option>
+                                <option value="双极">Đài Hành Hình Sokyoku (双极)</option>
+                                <option value="静涎亭">Tĩnh Linh Đình (静涎亭)</option>
+                                <option value="尸魂界通道">Đường Hầm Senkaimon (尸魂界通道)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Can thiệp code & Cheat Panel -->
+                    <div class="webshell-control-panel">
+                        <div class="control-panel-title">
+                            <span>🎮 BẢNG ĐIỀU KHIỂN & CAN THIỆP TRỰC TIẾP (RUNTIME CONTROLS)</span>
+                            <span id="wsLiveStatus" class="ws-live-status">Trạng thái: Đang chờ</span>
+                        </div>
+                        <div class="control-panel-buttons">
+                            <button id="btnWsFullHp" class="btn btn-secondary btn-sm" title="Hồi đầy 1000 HP cho cả 2 nhân vật">
+                                ❤️ Bơm đầy Máu (Full HP)
+                            </button>
+                            <button id="btnWsTogglePause" class="btn btn-secondary btn-sm" title="Tạm dừng hoặc Tiếp tục trận đấu trong Flash">
+                                ⏸️ Tạm Dừng / Tiếp Tục
+                            </button>
+                            <button id="btnWsEndMatch" class="btn btn-secondary btn-sm" title="Kết thúc trận ngay và quay về Menu chính">
+                                🏠 Về Menu Chính Flash
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer webshell-footer">
+                    <button id="btnCloseWebShellBottom" class="btn btn-secondary">Đóng cửa sổ</button>
+                    <button id="btnWsStartMatch" class="btn btn-primary btn-lg btn-launch-match">
+                        ⚔️ VÀO TRẬN NGAY (START MATCH)
+                    </button>
                 </div>
             </div>
         </div>

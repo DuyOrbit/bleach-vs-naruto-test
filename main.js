@@ -381,7 +381,7 @@ function syncHudKeyLabels() {
 let socket = null;
 let peerConnection = null;
 let myRole = 'solo'; // 'solo' | 'host' | 'guest'
-let currentNetcodeMode = 'stream'; // Khóa cố định Remote Play: 1 game duy nhất, 100% không lệch trận
+let currentNetcodeMode = localStorage.getItem('bvn_netcode_mode') || 'input_sync'; // 'input_sync' (0 MB Video) | 'stream' (Remote Play)
 let rufflePlayer = null;
 let ruffleCanvas = null;
 let pingInterval = null;
@@ -393,6 +393,8 @@ const pingBadge = document.getElementById('pingBadge');
 const pingVal = document.getElementById('pingVal');
 const roleBadge = document.getElementById('roleBadge');
 const netcodeBadge = document.getElementById('netcodeBadge');
+const netplayModeSelect = document.getElementById('netplayModeSelect');
+const streamQualityWrapper = document.getElementById('streamQualityWrapper');
 
 const flashWrapper = document.getElementById('flashPlayerWrapper');
 const remoteVideo = document.getElementById('remoteVideo');
@@ -498,6 +500,73 @@ function pauseLocalRuffle() {
     }
 }
 
+function resumeLocalRuffle() {
+    try {
+        setLocalRufflePaused(false);
+        if (rufflePlayer) {
+            const api = typeof rufflePlayer.ruffle === 'function' ? rufflePlayer.ruffle(1) : rufflePlayer;
+            if (api) {
+                if (typeof api.resume === 'function') api.resume();
+                if (typeof api.play === 'function') api.play();
+                if ('volume' in api) api.volume = 1;
+            }
+        }
+        const rPlayer = document.getElementById('rufflePlayer');
+        if (rPlayer) rPlayer.style.display = 'block';
+    } catch (e) {
+        console.warn("Không thể resume local ruffle:", e);
+    }
+}
+
+// Chuyển đổi giữa 2 chế độ: Mode 1 (Remote Play stream 30FPS) & Mode 2 (P2P Input Sync 0 MB Video)
+function setNetcodeMode(mode, broadcast = false) {
+    if (mode !== 'stream' && mode !== 'input_sync') mode = 'input_sync';
+    currentNetcodeMode = mode;
+    localStorage.setItem('bvn_netcode_mode', mode);
+
+    if (netplayModeSelect && netplayModeSelect.value !== mode) {
+        netplayModeSelect.value = mode;
+    }
+
+    if (streamQualityWrapper) {
+        streamQualityWrapper.style.display = (mode === 'stream') ? 'inline-flex' : 'none';
+    }
+
+    if (netcodeBadge) {
+        if (mode === 'input_sync') {
+            netcodeBadge.innerText = '⚡ Mode: P2P Input Sync (0 MB Video)';
+        } else {
+            netcodeBadge.innerText = '📺 Mode: Remote Play (Stream 30FPS)';
+        }
+    }
+
+    if (mode === 'input_sync') {
+        if (myRole === 'guest') {
+            resumeLocalRuffle();
+            if (remoteVideo) remoteVideo.classList.add('hidden');
+        }
+    } else {
+        if (myRole === 'guest') {
+            pauseLocalRuffle();
+            if (remoteVideo) remoteVideo.classList.remove('hidden');
+        }
+    }
+
+    if (broadcast && myRole === 'host') {
+        sendFastMessage({ type: 'sync_mode', mode });
+    }
+}
+
+if (netplayModeSelect) {
+    netplayModeSelect.value = currentNetcodeMode;
+    netplayModeSelect.addEventListener('change', (e) => {
+        setNetcodeMode(e.target.value, true);
+        showSyncNotification(e.target.value === 'input_sync' 
+            ? '⚡ Đã chọn: P2P Input Sync (0 MB Video • Chuẩn Animugen)'
+            : '📺 Đã chọn: Remote Play (Stream Video 30FPS • 1 Trận Chung)');
+    });
+}
+
 
 // ==========================================
 // TỐI ƯU HÓA BĂNG THÔNG CHO MÁY CHỦ
@@ -507,7 +576,12 @@ const GAME_SWF_CDN_URL = "https://cdn.jsdelivr.net/gh/DuyOrbit/naruto-vs-bleach-
 const GAME_SWF_LOCAL_URL = "game.swf";
 
 async function getGameSwfUrl() {
-    const CACHE_NAME = 'bvn-game-cache-v1';
+    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    if (isLocalhost) {
+        return GAME_SWF_LOCAL_URL + "?v=" + Date.now();
+    }
+
+    const CACHE_NAME = 'bvn-game-cache-v2';
     if ('caches' in window) {
         try {
             const cache = await caches.open(CACHE_NAME);
@@ -567,6 +641,7 @@ async function initRuffleGame() {
             unmuteOverlay: "hidden",
             splashScreen: false,
             backgroundExecutionMode: "mainThread",
+            allowScriptAccess: true,
             base: baseStaticUrl
         };
 
@@ -577,6 +652,9 @@ async function initRuffleGame() {
 
         const hideIntroOverlay = () => {
             loadingOverlay.classList.add('hidden');
+            if (window.bvnBridge && typeof window.bvnBridge.skipIntro === 'function') {
+                try { window.bvnBridge.skipIntro(); } catch (e) {}
+            }
             focusGame();
         };
 
@@ -782,7 +860,7 @@ function preferH264Codec(pc) {
 }
 
 async function setupHostWebRtc() {
-    console.log("Khởi động WebRTC Host Stream...");
+    console.log(`Khởi động WebRTC Host (${currentNetcodeMode})...`);
     if (peerConnection) {
         try { peerConnection.close(); } catch (e) {}
         peerConnection = null;
@@ -795,54 +873,60 @@ async function setupHostWebRtc() {
     setupInputChannel(peerConnection.createDataChannel('bvn-input', { ordered: false, maxRetransmits: 0 }));
     let videoSender = null;
 
-    // Chờ canvas sẵn sàng
-    if (!ruffleCanvas) {
-        findRuffleCanvas(rufflePlayer);
-    }
-    let retry = 0;
-    while (!ruffleCanvas && retry < 25) {
-        await new Promise(r => setTimeout(r, 200));
-        findRuffleCanvas(rufflePlayer);
-        retry++;
-    }
+    if (currentNetcodeMode === 'stream') {
+        // Mode 1: Remote Play (Stream Video HD 30FPS)
+        if (!ruffleCanvas) {
+            findRuffleCanvas(rufflePlayer);
+        }
+        let retry = 0;
+        while (!ruffleCanvas && retry < 25) {
+            await new Promise(r => setTimeout(r, 200));
+            findRuffleCanvas(rufflePlayer);
+            retry++;
+        }
 
-    if (ruffleCanvas && ruffleCanvas.captureStream) {
-        try {
-            setupCanvasResizeObserver();
-            // Capture đúng 30 FPS khớp với frame rate chuẩn của Flash SWF (30 FPS)
-            const canvasStream = ruffleCanvas.captureStream(30);
-            const videoTrack = canvasStream.getVideoTracks()[0];
-            if (videoTrack) {
-                if ('contentHint' in videoTrack) {
-                    // 'motion': Tối ưu chuyển động mượt mà độ trễ thấp cho game đối kháng
-                    videoTrack.contentHint = 'motion';
+        if (ruffleCanvas && ruffleCanvas.captureStream) {
+            try {
+                setupCanvasResizeObserver();
+                // Capture đúng 30 FPS khớp với frame rate chuẩn của Flash SWF (30 FPS)
+                const canvasStream = ruffleCanvas.captureStream(30);
+                const videoTrack = canvasStream.getVideoTracks()[0];
+                if (videoTrack) {
+                    if ('contentHint' in videoTrack) {
+                        videoTrack.contentHint = 'motion';
+                    }
                 }
+
+                const outgoingStream = new MediaStream();
+                if (videoTrack) outgoingStream.addTrack(videoTrack);
+
+                // Thêm Audio Track nếu có
+                if (window._ruffleAudioStream) {
+                    const audioTracks = window._ruffleAudioStream.getAudioTracks();
+                    if (audioTracks.length > 0) {
+                        outgoingStream.addTrack(audioTracks[0]);
+                    }
+                }
+
+                outgoingStream.getTracks().forEach(track => {
+                    const sender = peerConnection.addTrack(track, outgoingStream);
+                    if (track.kind === 'video') {
+                        videoSender = sender;
+                        activeVideoSender = sender;
+                    }
+                    console.log(`Host: Đã thêm ${track.kind} Track 30FPS vào WebRTC.`);
+                });
+            } catch (e) {
+                console.error("Lỗi captureStream từ ruffleCanvas:", e);
             }
-
-            const outgoingStream = new MediaStream();
-            if (videoTrack) outgoingStream.addTrack(videoTrack);
-
-            // Thêm Audio Track nếu có
-            if (window._ruffleAudioStream) {
-                const audioTracks = window._ruffleAudioStream.getAudioTracks();
-                if (audioTracks.length > 0) {
-                    outgoingStream.addTrack(audioTracks[0]);
-                }
-            }
-
-            outgoingStream.getTracks().forEach(track => {
-                const sender = peerConnection.addTrack(track, outgoingStream);
-                if (track.kind === 'video') {
-                    videoSender = sender;
-                    activeVideoSender = sender;
-                }
-                console.log(`Host: Đã thêm ${track.kind} Track 30FPS vào WebRTC.`);
-            });
-        } catch (e) {
-            console.error("Lỗi captureStream từ ruffleCanvas:", e);
+        } else {
+            console.warn("ruffleCanvas không hỗ trợ captureStream!");
         }
     } else {
-        console.warn("ruffleCanvas không hỗ trợ captureStream!");
+        // Mode 2: P2P Input Sync (Zero Video Bandwidth • 0 MB Video)
+        console.log("Host: Kích hoạt P2P Input Sync (Không capture video stream, chỉ truyền phím DataChannel)");
+        startHostP1StateSender();
+        startHostReconciliation();
     }
 
     peerConnection.onicecandidate = (event) => {
@@ -857,23 +941,29 @@ async function setupHostWebRtc() {
     peerConnection.onconnectionstatechange = () => {
         console.log("Host PeerConnection state:", peerConnection.connectionState);
         if (peerConnection.connectionState === 'connected') {
-            const preset = STREAM_QUALITY_PRESETS[currentStreamQuality] || STREAM_QUALITY_PRESETS.smooth;
-            showSyncNotification(`🟢 Đã kết nối P2P 30FPS mượt mà (${preset.label}) cho Khách!`);
-            if (videoSender) tuneVideoSenderForLowLatency(videoSender);
+            if (currentNetcodeMode === 'stream') {
+                const preset = STREAM_QUALITY_PRESETS[currentStreamQuality] || STREAM_QUALITY_PRESETS.smooth;
+                showSyncNotification(`🟢 Đã kết nối P2P 30FPS mượt mà (${preset.label}) cho Khách!`);
+                if (videoSender) tuneVideoSenderForLowLatency(videoSender);
+            } else {
+                showSyncNotification("⚡ Đã kết nối P2P Input Sync (0 MB Video)! Hai máy đồng bộ 60FPS không tốn mạng.");
+            }
         }
     };
 
     // Tạo Offer
     try {
-        preferH264Codec(peerConnection);
+        if (currentNetcodeMode === 'stream') {
+            preferH264Codec(peerConnection);
+        }
         const offer = await peerConnection.createOffer();
-        const boostedSdp = boostSdpBitrate(offer.sdp);
+        const boostedSdp = (currentNetcodeMode === 'stream') ? boostSdpBitrate(offer.sdp) : offer.sdp;
         await peerConnection.setLocalDescription({ type: 'offer', sdp: boostedSdp });
         sendNetworkMessage({
             type: 'webrtc_offer',
             sdp: boostedSdp
         });
-        if (videoSender) await tuneVideoSenderForLowLatency(videoSender);
+        if (videoSender && currentNetcodeMode === 'stream') await tuneVideoSenderForLowLatency(videoSender);
     } catch (e) {
         console.error("Host: Lỗi tạo WebRTC offer:", e);
     }
@@ -958,46 +1048,65 @@ function setLocalRufflePaused(paused) {
     }
 }
 
-// GUEST: Nhận luồng hình ảnh & âm thanh từ Host
+// GUEST: Nhận luồng hình ảnh & âm thanh từ Host (stream) hoặc tham gia P2P Input Sync (input_sync)
 function setupGuestWebRtc() {
-    console.log("Khởi động WebRTC Guest Receiver...");
+    console.log(`Khởi động WebRTC Guest (${currentNetcodeMode})...`);
     if (peerConnection) {
         try { peerConnection.close(); } catch (e) {}
         peerConnection = null;
     }
 
-    // Ẩn và TẠM DỪNG player Flash local của Guest để dành CPU/GPU cho giải mã video (giảm trễ)
-    const rPlayer = document.getElementById('rufflePlayer');
-    if (rPlayer) rPlayer.style.display = 'none';
-    pauseLocalRuffle();
+    if (currentNetcodeMode === 'stream') {
+        // Mode 1: Remote Play - Ẩn và TẠM DỪNG player Flash local của Guest để dành CPU/GPU cho giải mã video (giảm trễ)
+        const rPlayer = document.getElementById('rufflePlayer');
+        if (rPlayer) rPlayer.style.display = 'none';
+        pauseLocalRuffle();
 
-    if (remoteVideo) {
-        remoteVideo.classList.remove('hidden');
-    }
-    if (loadingOverlay) {
-        loadingOverlay.classList.add('hidden');
-    }
+        if (remoteVideo) {
+            remoteVideo.classList.remove('hidden');
+        }
+        if (loadingOverlay) {
+            loadingOverlay.classList.add('hidden');
+        }
 
-    const guestStream = new MediaStream();
-    if (remoteVideo) {
-        remoteVideo.srcObject = guestStream;
-        remoteVideo.muted = true; // Muted ban đầu để trình duyệt phát hình 100% ngay lập tức
-    }
+        const guestStream = new MediaStream();
+        if (remoteVideo) {
+            remoteVideo.srcObject = guestStream;
+            remoteVideo.muted = true; // Muted ban đầu để trình duyệt phát hình 100% ngay lập tức
+        }
 
-    // Tự động bật âm thanh khi người dùng click hoặc nhấn phím
-    const enableAudio = () => {
-        if (remoteVideo) remoteVideo.muted = false;
-        window.removeEventListener('click', enableAudio);
-        window.removeEventListener('keydown', enableAudio);
-    };
-    window.addEventListener('click', enableAudio);
-    window.addEventListener('keydown', enableAudio);
+        // Tự động bật âm thanh khi người dùng click hoặc nhấn phím
+        const enableAudio = () => {
+            if (remoteVideo) remoteVideo.muted = false;
+            window.removeEventListener('click', enableAudio);
+            window.removeEventListener('keydown', enableAudio);
+        };
+        window.addEventListener('click', enableAudio);
+        window.addEventListener('keydown', enableAudio);
 
-    if (remoteVideo) {
-        remoteVideo.setAttribute('tabindex', '0');
-        remoteVideo.playsInline = true;
-        if ('disableRemotePlayback' in remoteVideo) remoteVideo.disableRemotePlayback = true;
-        remoteVideo.addEventListener('click', () => remoteVideo.focus());
+        if (remoteVideo) {
+            remoteVideo.setAttribute('tabindex', '0');
+            remoteVideo.playsInline = true;
+            if ('disableRemotePlayback' in remoteVideo) remoteVideo.disableRemotePlayback = true;
+            remoteVideo.addEventListener('click', () => remoteVideo.focus());
+        }
+    } else {
+        // Mode 2: P2P Input Sync - Chạy trực tiếp game Flash trên máy Guest, ẩn remoteVideo
+        resumeLocalRuffle();
+        const rPlayer = document.getElementById('rufflePlayer');
+        if (rPlayer) rPlayer.style.display = 'block';
+
+        if (remoteVideo) {
+            remoteVideo.classList.add('hidden');
+            if (remoteVideo.srcObject) {
+                try { remoteVideo.srcObject.getTracks().forEach(t => t.stop()); } catch (e) {}
+                remoteVideo.srcObject = null;
+            }
+        }
+        if (loadingOverlay) {
+            loadingOverlay.classList.add('hidden');
+        }
+        startGuestP1Watchdog();
     }
 
     peerConnection = new RTCPeerConnection(PEER_CONFIG.config);
@@ -1007,20 +1116,22 @@ function setupGuestWebRtc() {
         setupInputChannel(event.channel);
     };
 
-    peerConnection.ontrack = (event) => {
-        console.log("Guest: Nhận media track:", event.track.kind);
-        if (event.track) {
-            guestStream.addTrack(event.track);
-        }
-        // Giảm jitter buffer xuống mức thấp nhất (0-50ms) để loại bỏ độ trễ truyền hình ảnh
-        applyLowLatencyReceiverHints(peerConnection);
+    if (currentNetcodeMode === 'stream') {
+        peerConnection.ontrack = (event) => {
+            console.log("Guest: Nhận media track:", event.track.kind);
+            if (event.track && remoteVideo && remoteVideo.srcObject) {
+                remoteVideo.srcObject.addTrack(event.track);
+            }
+            // Giảm jitter buffer xuống mức thấp nhất (0-50ms) để loại bỏ độ trễ truyền hình ảnh
+            applyLowLatencyReceiverHints(peerConnection);
 
-        if (remoteVideo && remoteVideo.paused) {
-            remoteVideo.play().catch(err => {
-                console.warn("Video play cần cử chỉ tương tác người dùng:", err);
-            });
-        }
-    };
+            if (remoteVideo && remoteVideo.paused) {
+                remoteVideo.play().catch(err => {
+                    console.warn("Video play cần cử chỉ tương tác người dùng:", err);
+                });
+            }
+        };
+    }
 
     peerConnection.onicecandidate = (event) => {
         if (event.candidate) {
@@ -1034,8 +1145,12 @@ function setupGuestWebRtc() {
     peerConnection.onconnectionstatechange = () => {
         console.log("Guest PeerConnection state:", peerConnection.connectionState);
         if (peerConnection.connectionState === 'connected') {
-            applyLowLatencyReceiverHints(peerConnection);
-            showSyncNotification("🟢 Đã đồng bộ màn hình trận đấu trực tiếp từ Chủ phòng (30FPS HD)!");
+            if (currentNetcodeMode === 'stream') {
+                applyLowLatencyReceiverHints(peerConnection);
+                showSyncNotification("🟢 Đã đồng bộ màn hình trận đấu trực tiếp từ Chủ phòng (30FPS HD)!");
+            } else {
+                showSyncNotification("⚡ Đã kết nối P2P Input Sync (0 MB Video)! Sẵn sàng chiến đấu!");
+            }
         }
     };
 }
@@ -1194,7 +1309,177 @@ window.addEventListener('blur', () => {
         guestP2StateMask = 0;
         sendGuestP2State();
     }
+    if (myRole === 'host' && currentNetcodeMode === 'input_sync' && hostP1StateMask !== 0) {
+        hostP1StateMask = 0;
+        sendHostP1State();
+    }
 });
+
+// ==========================================
+// 6A. ĐỒNG BỘ TRẠNG THÁI PHÍM P1 (CHO CHẾ ĐỘ P2P INPUT SYNC)
+// ==========================================
+const P1_INPUT_BITS = {
+    UP:     1 << 0,  // 1
+    DOWN:   1 << 1,  // 2
+    LEFT:   1 << 2,  // 4
+    RIGHT:  1 << 3,  // 8
+    ATTACK: 1 << 4,  // 16
+    JUMP:   1 << 5,  // 32
+    DASH:   1 << 6,  // 64
+    SUB:    1 << 7,  // 128
+    ULTI:   1 << 8,  // 256
+    ASSIST: 1 << 9,  // 512
+    ENTER:  1 << 10  // 1024
+};
+
+// Phía Chủ phòng (Host - P1)
+let hostP1StateMask = 0;
+let hostP1InputSequence = 0;
+let hostP1StateTickInterval = null;
+
+function setHostP1KeyAction(action, isDown) {
+    if (!P1_INPUT_BITS[action]) return;
+    const bit = P1_INPUT_BITS[action];
+    const prevMask = hostP1StateMask;
+    if (isDown) {
+        hostP1StateMask |= bit;
+    } else {
+        hostP1StateMask &= ~bit;
+    }
+    if (hostP1StateMask !== prevMask && currentNetcodeMode === 'input_sync') {
+        sendHostP1State();
+    }
+}
+
+function sendHostP1State() {
+    if (currentNetcodeMode !== 'input_sync') return;
+    hostP1InputSequence++;
+    sendFastMessage({
+        type: 'p1_input_state',
+        mask: hostP1StateMask,
+        seq: hostP1InputSequence
+    });
+}
+
+function startHostP1StateSender() {
+    if (hostP1StateTickInterval) clearInterval(hostP1StateTickInterval);
+    hostP1StateTickInterval = setInterval(() => {
+        if (myRole === 'host' && currentNetcodeMode === 'input_sync') {
+            sendHostP1State();
+        }
+    }, 20);
+}
+
+function stopHostP1StateSender() {
+    if (hostP1StateTickInterval) {
+        clearInterval(hostP1StateTickInterval);
+        hostP1StateTickInterval = null;
+    }
+    hostP1StateMask = 0;
+}
+
+// Phía Khách (Guest - nhận P1 từ Host)
+let guestLastP1Mask = 0;
+let guestLastP1PacketTime = 0;
+let guestP1WatchdogInterval = null;
+
+function handleGuestP1State(data) {
+    if (myRole !== 'guest' || currentNetcodeMode !== 'input_sync') return;
+    const newMask = typeof data.mask === 'number' ? data.mask : 0;
+    guestLastP1PacketTime = Date.now();
+
+    const changed = newMask ^ guestLastP1Mask;
+    if (changed !== 0) {
+        for (const [action, bit] of Object.entries(P1_INPUT_BITS)) {
+            if (changed & bit) {
+                const isDown = (newMask & bit) !== 0;
+                const eventType = isDown ? 'keydown' : 'keyup';
+
+                if (action === 'ENTER') {
+                    const enterKey = { code: 'Enter', key: 'Enter', keyCode: 13, which: 13 };
+                    dispatchFlashKeyEvent(eventType, enterKey);
+                } else {
+                    const nativeKey = FLASH_NATIVE_KEYS.p1[action];
+                    if (nativeKey) {
+                        dispatchFlashKeyEvent(eventType, nativeKey);
+                    }
+                }
+
+                if (action !== 'ENTER') {
+                    updateInputHud('p1', action, isDown);
+                }
+            }
+        }
+        guestLastP1Mask = newMask;
+    }
+}
+
+function startGuestP1Watchdog() {
+    if (guestP1WatchdogInterval) clearInterval(guestP1WatchdogInterval);
+    guestP1WatchdogInterval = setInterval(() => {
+        if (myRole === 'guest' && currentNetcodeMode === 'input_sync' && guestLastP1Mask !== 0) {
+            if (Date.now() - guestLastP1PacketTime > 300) {
+                console.warn("[Guest Watchdog] Quá 300ms không nhận gói P1 từ Host -> Tự động nhả toàn bộ phím P1!");
+                releaseAllGuestP1Keys();
+            }
+        }
+    }, 50);
+}
+
+function stopGuestP1Watchdog() {
+    if (guestP1WatchdogInterval) {
+        clearInterval(guestP1WatchdogInterval);
+        guestP1WatchdogInterval = null;
+    }
+    releaseAllGuestP1Keys();
+}
+
+function releaseAllGuestP1Keys() {
+    if (guestLastP1Mask === 0) return;
+    for (const [action, bit] of Object.entries(P1_INPUT_BITS)) {
+        if (guestLastP1Mask & bit) {
+            if (action === 'ENTER') {
+                dispatchFlashKeyEvent('keyup', { code: 'Enter', key: 'Enter', keyCode: 13, which: 13 });
+            } else {
+                const nativeKey = FLASH_NATIVE_KEYS.p1[action];
+                if (nativeKey) {
+                    dispatchFlashKeyEvent('keyup', nativeKey);
+                }
+                updateInputHud('p1', action, false);
+            }
+        }
+    }
+    guestLastP1Mask = 0;
+}
+
+// Cơ chế cân bằng & khử lệch trạng thái (Authoritative Host Reconciliation)
+let hostReconcileInterval = null;
+function startHostReconciliation() {
+    if (hostReconcileInterval) clearInterval(hostReconcileInterval);
+    hostReconcileInterval = setInterval(() => {
+        if (myRole === 'host' && currentNetcodeMode === 'input_sync') {
+            if (window.bvnBridge && typeof window.bvnBridge.getBattleState === 'function') {
+                const state = window.bvnBridge.getBattleState();
+                if (state && state.inBattle) {
+                    sendFastMessage({
+                        type: 'battle_reconcile',
+                        p1Hp: state.p1Hp,
+                        p2Hp: state.p2Hp,
+                        p1Qi: state.p1Qi,
+                        p2Qi: state.p2Qi
+                    });
+                }
+            }
+        }
+    }, 1000);
+}
+
+function stopHostReconciliation() {
+    if (hostReconcileInterval) {
+        clearInterval(hostReconcileInterval);
+        hostReconcileInterval = null;
+    }
+}
 
 // Phía Chủ phòng (Host - P1)
 let hostLastP2Mask = 0;
@@ -1331,10 +1616,18 @@ function handleUserKeyEvent(e, eventType) {
             updateInputHud('p2', 'ATTACK', isKeyDown);
             setGuestKeyAction('ATTACK', isKeyDown);
             setGuestKeyAction('ENTER', isKeyDown);
+            if (currentNetcodeMode === 'input_sync') {
+                dispatchFlashKeyEvent(eventType, FLASH_NATIVE_KEYS.p2.ATTACK);
+                dispatchFlashKeyEvent(eventType, rawKey);
+            }
         } else {
             updateInputHud('p1', 'ATTACK', isKeyDown);
             dispatchFlashKeyEvent(eventType, FLASH_NATIVE_KEYS.p1.ATTACK);
             dispatchFlashKeyEvent(eventType, rawKey);
+            if (myRole === 'host' && currentNetcodeMode === 'input_sync') {
+                setHostP1KeyAction('ATTACK', isKeyDown);
+                setHostP1KeyAction('ENTER', isKeyDown);
+            }
             sendFastMessage({
                 type: 'hud_key',
                 role: 'p1',
@@ -1354,6 +1647,9 @@ function handleUserKeyEvent(e, eventType) {
             if (e.repeat) return;
             updateInputHud('p1', actionP1, isKeyDown);
             dispatchFlashKeyEvent(eventType, FLASH_NATIVE_KEYS.p1[actionP1]);
+            if (currentNetcodeMode === 'input_sync') {
+                setHostP1KeyAction(actionP1, isKeyDown);
+            }
             sendFastMessage({
                 type: 'hud_key',
                 role: 'p1',
@@ -1381,6 +1677,10 @@ function handleUserKeyEvent(e, eventType) {
             if (e.repeat) return;
             updateInputHud('p2', action, isKeyDown);
             setGuestKeyAction(action, isKeyDown);
+            if (currentNetcodeMode === 'input_sync') {
+                const nativeKey = FLASH_NATIVE_KEYS.p2[action];
+                if (nativeKey) dispatchFlashKeyEvent(eventType, nativeKey);
+            }
             return;
         }
     }
@@ -1453,20 +1753,43 @@ function handleNetworkMessage(data) {
         startPingMeasurement();
 
         if (myRole === 'host') {
-            updateStatus('connected', `🟢 BẠN LÀ P1 (HOST): Đang phát trực tiếp 30FPS HD cho Khách!`);
-            showSyncNotification("🎮 Đã kết nối với Khách! Host bấm S (xuống) chọn 'Vs Human' ➔ bấm Enter để cùng chọn tướng đấu 2 người!");
-            startHostP2Watchdog();
+            sendFastMessage({ type: 'sync_mode', mode: currentNetcodeMode });
+            if (currentNetcodeMode === 'input_sync') {
+                updateStatus('connected', `⚡ BẠN LÀ P1 (HOST): P2P Input Sync (0 MB Video) cùng Khách!`);
+                showSyncNotification("⚡ Đã kết nối P2P Input Sync! Hai máy chạy độc lập siêu nhẹ 60FPS không tốn mạng.");
+                startHostP2Watchdog();
+                startHostP1StateSender();
+                startHostReconciliation();
+            } else {
+                updateStatus('connected', `🟢 BẠN LÀ P1 (HOST): Đang phát trực tiếp 30FPS HD cho Khách!`);
+                showSyncNotification("🎮 Đã kết nối với Khách! Host bấm S (xuống) chọn 'Vs Human' ➔ bấm Enter để cùng chọn tướng đấu 2 người!");
+                startHostP2Watchdog();
+            }
             setTimeout(setupHostWebRtc, 500);
         } else {
-            updateStatus('connected', `🟢 BẠN LÀ P2 (KHÁCH): Đang xem trực tiếp 30FPS HD từ Host!`);
-            showSyncNotification("🟢 Đã kết nối với Chủ phòng (30FPS HD)! Bạn đang điều khiển P2. Sẵn sàng!");
-            startGuestStateSender();
+            if (currentNetcodeMode === 'input_sync') {
+                updateStatus('connected', `⚡ BẠN LÀ P2 (KHÁCH): P2P Input Sync (0 MB Video) cùng Host!`);
+                showSyncNotification("⚡ Đã kết nối P2P Input Sync! Bạn đang điều khiển P2 với 0ms trễ hình ảnh.");
+                startGuestStateSender();
+                startGuestP1Watchdog();
+            } else {
+                updateStatus('connected', `🟢 BẠN LÀ P2 (KHÁCH): Đang xem trực tiếp 30FPS HD từ Host!`);
+                showSyncNotification("🟢 Đã kết nối với Chủ phòng (30FPS HD)! Bạn đang điều khiển P2. Sẵn sàng!");
+                startGuestStateSender();
+            }
             setupGuestWebRtc();
         }
         return;
     }
 
-    // 4. WebRTC Signaling (Offer, Answer, Candidate cho Remote Play)
+    // Đồng bộ chế độ mạng giữa Host và Guest
+    if (data.type === 'sync_mode') {
+        console.log("Đồng bộ chế độ mạng từ Host:", data.mode);
+        setNetcodeMode(data.mode, false);
+        return;
+    }
+
+    // 4. WebRTC Signaling (Offer, Answer, Candidate)
     if (data.type === 'webrtc_offer') {
         handleWebRtcOffer(data.sdp);
         return;
@@ -1483,6 +1806,56 @@ function handleNetworkMessage(data) {
     // 5. Host nhận gói trạng thái phím P2 liên tục (state-based mask) chống kẹt phím
     if (data.type === 'p2_input_state') {
         handleHostP2State(data);
+        return;
+    }
+
+    // Guest nhận gói trạng thái phím P1 từ Host (Mode 2: Input Sync)
+    if (data.type === 'p1_input_state') {
+        handleGuestP1State(data);
+        return;
+    }
+
+    // Đồng bộ vào trận đấu từ Web Shell
+    if (data.type === 'sync_start_match') {
+        console.log(`[Guest] Nhận lệnh khởi động trận đấu từ Host: ${data.p1} vs ${data.p2}`);
+        if (window.bvnBridge && typeof window.bvnBridge.startMatch === 'function') {
+            window.bvnBridge.startMatch(data.p1, data.p2, data.p1Assist, data.p2Assist, data.stage, data.modo);
+        }
+        showSyncNotification(`⚔️ Chủ phòng khởi động trận đấu: ${data.p1} vs ${data.p2}!`);
+        return;
+    }
+
+    // Đồng bộ các thao tác Web Shell (Cheat HP, Tạm dừng, Về Menu)
+    if (data.type === 'sync_bridge_action') {
+        if (window.bvnBridge) {
+            if (data.action === 'set_hp') {
+                window.bvnBridge.setFighterHp(data.player, data.hp);
+            } else if (data.action === 'pause') {
+                window.bvnBridge.pauseBattle();
+            } else if (data.action === 'resume') {
+                window.bvnBridge.resumeBattle();
+            } else if (data.action === 'end_match') {
+                window.bvnBridge.endMatchToMenu();
+            }
+        }
+        return;
+    }
+
+    // Khử lệch trạng thái từ Host (Authoritative Reconciliation)
+    if (data.type === 'battle_reconcile') {
+        if (myRole === 'guest' && currentNetcodeMode === 'input_sync') {
+            if (window.bvnBridge && typeof window.bvnBridge.getBattleState === 'function') {
+                const localState = window.bvnBridge.getBattleState();
+                if (localState && localState.inBattle) {
+                    if (typeof data.p1Hp === 'number' && Math.abs(localState.p1Hp - data.p1Hp) > 25) {
+                        window.bvnBridge.setFighterHp(1, data.p1Hp);
+                    }
+                    if (typeof data.p2Hp === 'number' && Math.abs(localState.p2Hp - data.p2Hp) > 25) {
+                        window.bvnBridge.setFighterHp(2, data.p2Hp);
+                    }
+                }
+            }
+        }
         return;
     }
 
@@ -1534,6 +1907,9 @@ function handleNetworkMessage(data) {
     if (data.type === 'peer_disconnected') {
         stopHostP2Watchdog();
         stopGuestStateSender();
+        stopHostP1StateSender();
+        stopGuestP1Watchdog();
+        stopHostReconciliation();
         stopStatsMonitoring();
         updateStatus('waiting', 'Đối thủ đã ngắt kết nối.');
         pingBadge.classList.add('hidden');
@@ -1578,10 +1954,16 @@ function joinRoomAsGuest(roomId) {
     guestConnectionMsg.classList.remove('hidden');
     guestConnectionMsg.innerText = `Đang tìm phòng [${roomId}]...`;
 
-    // Ngừng chạy Flash trên máy Khách để không tốn CPU/bộ nhớ
-    pauseLocalRuffle();
-    const rPlayer = document.getElementById('rufflePlayer');
-    if (rPlayer) rPlayer.style.display = 'none';
+    // Nếu ở chế độ Stream (Remote Play), ngừng chạy Flash trên máy Khách để không tốn CPU/bộ nhớ
+    if (currentNetcodeMode === 'stream') {
+        pauseLocalRuffle();
+        const rPlayer = document.getElementById('rufflePlayer');
+        if (rPlayer) rPlayer.style.display = 'none';
+    } else {
+        resumeLocalRuffle();
+        const rPlayer = document.getElementById('rufflePlayer');
+        if (rPlayer) rPlayer.style.display = 'block';
+    }
 
     // Giải phóng tiêu điểm (blur) khỏi ô nhập liệu để bàn phím không bị kẹt trong ô input!
     if (inputRoomCode) inputRoomCode.blur();
@@ -2330,11 +2712,19 @@ function dispatchActionFromGamepad(targetRole, action, isDown) {
             updateInputHud('p2', 'ATTACK', isDown);
             setGuestKeyAction('ATTACK', isDown);
             setGuestKeyAction('ENTER', isDown);
+            if (currentNetcodeMode === 'input_sync') {
+                dispatchFlashKeyEvent(eventType, FLASH_NATIVE_KEYS.p2.ATTACK);
+                dispatchFlashKeyEvent(eventType, rawKey);
+            }
         } else {
             updateInputHud(targetRole, 'ATTACK', isDown);
             dispatchFlashKeyEvent(eventType, FLASH_NATIVE_KEYS[targetRole].ATTACK);
             dispatchFlashKeyEvent(eventType, rawKey);
             if (myRole === 'host') {
+                if (currentNetcodeMode === 'input_sync') {
+                    setHostP1KeyAction('ATTACK', isDown);
+                    setHostP1KeyAction('ENTER', isDown);
+                }
                 sendFastMessage({
                     type: 'hud_key',
                     role: targetRole,
@@ -2351,6 +2741,9 @@ function dispatchActionFromGamepad(targetRole, action, isDown) {
         updateInputHud('p1', action, isDown);
         dispatchFlashKeyEvent(eventType, FLASH_NATIVE_KEYS.p1[action]);
         if (myRole === 'host') {
+            if (currentNetcodeMode === 'input_sync') {
+                setHostP1KeyAction(action, isDown);
+            }
             sendFastMessage({
                 type: 'hud_key',
                 role: 'p1',
@@ -2362,6 +2755,10 @@ function dispatchActionFromGamepad(targetRole, action, isDown) {
         updateInputHud('p2', action, isDown);
         if (myRole === 'guest') {
             setGuestKeyAction(action, isDown);
+            if (currentNetcodeMode === 'input_sync') {
+                const nativeKey = FLASH_NATIVE_KEYS.p2[action];
+                if (nativeKey) dispatchFlashKeyEvent(eventType, nativeKey);
+            }
         } else {
             dispatchFlashKeyEvent(eventType, FLASH_NATIVE_KEYS.p2[action]);
         }
@@ -2748,9 +3145,231 @@ if (btnCopyStkBanner) {
 }
 
 // ==========================================
+// 10.5. BVN WEB SHELL BRIDGE & MODAL (EXTERNAL INTERFACE)
+// Can thiệp mã nguồn game & Chọn tướng HTML5 kiểu Animugen
+// ==========================================
+const bvnBridge = {
+    get api() {
+        return (typeof rufflePlayer !== 'undefined' && rufflePlayer?.ruffle) ? rufflePlayer.ruffle(1) : null;
+    },
+    isReady() {
+        return !!this.api && typeof this.api.callExternalInterface === 'function';
+    },
+    call(methodName, ...args) {
+        if (!this.isReady()) {
+            console.warn('[BVN Bridge] Flash Ruffle engine chưa sẵn sàng để nhận lệnh:', methodName);
+            return null;
+        }
+        try {
+            return this.api.callExternalInterface(methodName, ...args);
+        } catch (e) {
+            console.error('[BVN Bridge] Lỗi gọi ExternalInterface (' + methodName + '):', e);
+            return null;
+        }
+    },
+    startMatch(p1, p2, p1Assist, p2Assist, stage, modo = 3) {
+        let res = this.call('startCustomMatch', p1, p2, p1Assist, p2Assist, stage, modo);
+        if (res === null) res = this.call('startMatch', p1, p2, p1Assist, p2Assist, stage, modo);
+        console.log('[BVN Bridge] startMatch ->', res);
+        return res;
+    },
+    getBattleState() {
+        const raw = this.call('getBattleState');
+        if (!raw || typeof raw !== 'string') return null;
+        const parts = raw.split('|');
+        if (parts[0] === 'fight') {
+            return {
+                inFight: true,
+                p1Hp: Number(parts[1]) || 0,
+                p2Hp: Number(parts[2]) || 0,
+                maxHp: Number(parts[3]) || 1000,
+                p1Wins: Number(parts[4]) || 0,
+                p2Wins: Number(parts[5]) || 0,
+                rounds: Number(parts[6]) || 1,
+                p1: parts[7] || '',
+                p2: parts[8] || '',
+                stage: parts[9] || '',
+                gameTime: Number(parts[10]) || 60
+            };
+        } else if (parts[0] === 'menu') {
+            return {
+                inFight: false,
+                currentFrame: Number(parts[1]) || 0
+            };
+        }
+        return null;
+    },
+    endMatchToMenu() {
+        return this.call('endMatchToMenu');
+    },
+    pauseBattle() {
+        return this.call('pauseBattle');
+    },
+    resumeBattle() {
+        return this.call('resumeBattle');
+    },
+    setFighterHp(playerNum, hp) {
+        return this.call('setFighterHp', playerNum, hp);
+    },
+    skipIntro() {
+        return this.call('skipIntroToMenu');
+    },
+    skipIntroToMenu() {
+        return this.call('skipIntroToMenu');
+    },
+};
+window.bvnBridge = bvnBridge;
+
+// Web Shell UI Elements
+const btnOpenWebShell = document.getElementById('btnOpenWebShell');
+const webShellModal = document.getElementById('webShellModal');
+const btnCloseWebShellModal = document.getElementById('btnCloseWebShellModal');
+const btnCloseWebShellBottom = document.getElementById('btnCloseWebShellBottom');
+const btnWsStartMatch = document.getElementById('btnWsStartMatch');
+const btnWsFullHp = document.getElementById('btnWsFullHp');
+const btnWsTogglePause = document.getElementById('btnWsTogglePause');
+const btnWsEndMatch = document.getElementById('btnWsEndMatch');
+const wsLiveStatus = document.getElementById('wsLiveStatus');
+
+let isWsPaused = false;
+let wsStatusTimer = null;
+
+function openWebShellModal() {
+    if (webShellModal) {
+        webShellModal.classList.remove('hidden');
+        updateWsLiveStatus();
+        if (wsStatusTimer) clearInterval(wsStatusTimer);
+        wsStatusTimer = setInterval(updateWsLiveStatus, 1000);
+    }
+}
+
+function closeWebShellModal() {
+    if (webShellModal) {
+        webShellModal.classList.add('hidden');
+        if (wsStatusTimer) {
+            clearInterval(wsStatusTimer);
+            wsStatusTimer = null;
+        }
+    }
+}
+
+function updateWsLiveStatus() {
+    if (!wsLiveStatus) return;
+    if (!bvnBridge.isReady()) {
+        wsLiveStatus.innerText = 'Trạng thái: Đang nạp engine Ruffle...';
+        wsLiveStatus.style.color = '#ffaa00';
+        return;
+    }
+    const state = bvnBridge.getBattleState();
+    if (!state) {
+        wsLiveStatus.innerText = 'Trạng thái: Sẵn sàng ở Menu Flash';
+        wsLiveStatus.style.color = '#00e676';
+    } else if (state.inFight) {
+        wsLiveStatus.innerText = `Đang thi đấu: P1 HP: ${state.p1Hp}/${state.maxHp} | P2 HP: ${state.p2Hp}/${state.maxHp} | Hiệp ${state.rounds}`;
+        wsLiveStatus.style.color = '#00bfff';
+    } else {
+        wsLiveStatus.innerText = `Trạng thái: Menu chính (Frame ${state.currentFrame})`;
+        wsLiveStatus.style.color = '#00e676';
+    }
+}
+
+if (btnOpenWebShell) btnOpenWebShell.addEventListener('click', openWebShellModal);
+if (btnCloseWebShellModal) btnCloseWebShellModal.addEventListener('click', closeWebShellModal);
+if (btnCloseWebShellBottom) btnCloseWebShellBottom.addEventListener('click', closeWebShellModal);
+
+if (webShellModal) {
+    webShellModal.addEventListener('click', (e) => {
+        if (e.target === webShellModal) closeWebShellModal();
+    });
+}
+
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && webShellModal && !webShellModal.classList.contains('hidden')) {
+        closeWebShellModal();
+    }
+});
+
+// Nút Bắt Đầu Trận Đấu từ Web Shell
+if (btnWsStartMatch) {
+    btnWsStartMatch.addEventListener('click', () => {
+        const p1 = document.getElementById('wsP1Fighter')?.value || '一护';
+        const p2 = document.getElementById('wsP2Fighter')?.value || '鸣人';
+        const p1Assist = document.getElementById('wsP1Assist')?.value || '夜一';
+        const p2Assist = document.getElementById('wsP2Assist')?.value || '我爱罗';
+        const stage = document.getElementById('wsStageSelect')?.value || '火影瀑布';
+        const modoRadio = document.querySelector('input[name="wsModo"]:checked');
+        const modo = modoRadio ? Number(modoRadio.value) : 3;
+
+        console.log(`[Web Shell] Khởi động trận đấu: P1=${p1} (+${p1Assist}) vs P2=${p2} (+${p2Assist}) | Map=${stage} | Mode=${modo}`);
+        
+        // Gọi bridge Flash
+        bvnBridge.startMatch(p1, p2, p1Assist, p2Assist, stage, modo);
+
+        // Đồng bộ cho Khách nếu là Host
+        if (myRole === 'host') {
+            sendFastMessage({
+                type: 'sync_start_match',
+                p1, p2, p1Assist, p2Assist, stage, modo
+            });
+        }
+
+        // Đóng modal và lấy tiêu điểm game
+        closeWebShellModal();
+        focusGame();
+    });
+}
+
+// Bơm đầy máu cho cả 2 bên (Cheat)
+if (btnWsFullHp) {
+    btnWsFullHp.addEventListener('click', () => {
+        bvnBridge.setFighterHp(1, 1000);
+        bvnBridge.setFighterHp(2, 1000);
+        if (myRole === 'host') {
+            sendFastMessage({ type: 'sync_bridge_action', action: 'set_hp', player: 1, hp: 1000 });
+            sendFastMessage({ type: 'sync_bridge_action', action: 'set_hp', player: 2, hp: 1000 });
+        }
+        updateWsLiveStatus();
+    });
+}
+
+// Tạm dừng / Tiếp tục
+if (btnWsTogglePause) {
+    btnWsTogglePause.addEventListener('click', () => {
+        if (!isWsPaused) {
+            bvnBridge.pauseBattle();
+            isWsPaused = true;
+            btnWsTogglePause.innerText = '▶️ Tiếp Tục Trận Đấu';
+            if (myRole === 'host') {
+                sendFastMessage({ type: 'sync_bridge_action', action: 'pause' });
+            }
+        } else {
+            bvnBridge.resumeBattle();
+            isWsPaused = false;
+            btnWsTogglePause.innerText = '⏸️ Tạm Dừng Trận Đấu';
+            if (myRole === 'host') {
+                sendFastMessage({ type: 'sync_bridge_action', action: 'resume' });
+            }
+        }
+        updateWsLiveStatus();
+    });
+}
+
+// Về Menu Chính
+if (btnWsEndMatch) {
+    btnWsEndMatch.addEventListener('click', () => {
+        bvnBridge.endMatchToMenu();
+        if (myRole === 'host') {
+            sendFastMessage({ type: 'sync_bridge_action', action: 'end_match' });
+        }
+        updateWsLiveStatus();
+    });
+}
+
+// ==========================================
 // 11. KHỞI ĐỘNG
 // ==========================================
 window.addEventListener('DOMContentLoaded', () => {
+    setNetcodeMode(currentNetcodeMode, false);
     wakeUpSignalingServer();
     renderGuides();
     syncHudKeyLabels();
