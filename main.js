@@ -40,7 +40,17 @@ const DEFAULT_STUN_SERVERS = [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
     { urls: 'stun:stun2.l.google.com:19302' },
-    { urls: 'stun:global.stun.twilio.com:3478' }
+    { urls: 'stun:global.stun.twilio.com:3478' },
+    // Cụm TURN Relay Server xuyên tường lửa / NAT (Chuẩn Animugen Open Relay)
+    {
+        urls: [
+            'turn:openrelay.metered.ca:80',
+            'turn:openrelay.metered.ca:443',
+            'turn:openrelay.metered.ca:443?transport=tcp'
+        ],
+        username: 'openrelayproject',
+        credential: 'openrelayproject'
+    }
 ];
 
 function getIceServers() {
@@ -419,6 +429,32 @@ function syncHudKeyLabels() {
 // ==========================================
 // 3. APPLICATION STATE & DOM REFERENCES
 // ==========================================
+// CẤU HÌNH CÁC PHIÊN BẢN GAME (DUAL EDITIONS)
+const EDITIONS = {
+    bvn26: {
+        id: 'bvn26',
+        name: 'Bleach vs Naruto 2.6 (Cổ Điển)',
+        fps: 30,
+        type: 'classic',
+        url: 'game.swf',
+        cdnUrl: 'https://cdn.jsdelivr.net/gh/DuyOrbit/naruto-vs-bleach-online@main/game.swf',
+        base: './',
+        badge: '⚔️ BVN 2.6 Cổ Điển (30 FPS)'
+    },
+    animebattle: {
+        id: 'animebattle',
+        name: 'Anime Battle 500 Tướng (An Nam Lục Cửu)',
+        fps: 60,
+        type: 'crossover',
+        url: 'https://animugen-staging.tonyngyx.workers.dev/tceam-game/launch.swf',
+        base: 'https://animugen-staging.tonyngyx.workers.dev/tceam-game/',
+        parameters: { sfxVolume: '1', webLobby: 'true' },
+        badge: '🔥 Anime Battle 500 Tướng (60 FPS)'
+    }
+};
+
+let currentEdition = localStorage.getItem('bvn_game_edition') || 'bvn26';
+
 let socket = null;
 let peerConnection = null;
 let myRole = 'solo'; // 'solo' | 'host' | 'guest'
@@ -428,6 +464,7 @@ let ruffleCanvas = null;
 let pingInterval = null;
 
 // DOM Elements
+const gameEditionSelect = document.getElementById('gameEditionSelect');
 const statusDot = document.getElementById('statusDot');
 const statusText = document.getElementById('statusText');
 const pingBadge = document.getElementById('pingBadge');
@@ -608,6 +645,24 @@ if (netplayModeSelect) {
     });
 }
 
+// Bắt sự kiện chuyển đổi phiên bản Game (BVN 2.6 Cổ Điển vs Anime Battle 500 Tướng)
+if (gameEditionSelect) {
+    gameEditionSelect.value = currentEdition;
+    gameEditionSelect.addEventListener('change', (e) => {
+        const selected = e.target.value;
+        if (selected !== currentEdition && EDITIONS[selected]) {
+            currentEdition = selected;
+            localStorage.setItem('bvn_game_edition', currentEdition);
+            const ed = EDITIONS[currentEdition];
+            showSyncNotification(`🔄 Đang chuyển sang ${ed.name}...`);
+            initRuffleGame();
+            if (myRole === 'host') {
+                sendFastMessage({ type: 'sync_edition', edition: currentEdition });
+            }
+        }
+    });
+}
+
 
 // ==========================================
 // TỐI ƯU HÓA BĂNG THÔNG CHO MÁY CHỦ
@@ -672,7 +727,22 @@ async function initRuffleGame() {
         rufflePlayer.style.width = "100%";
         rufflePlayer.style.height = "100%";
 
-        const baseStaticUrl = window.location.href.substring(0, window.location.href.lastIndexOf('/') + 1);
+        const editionConfig = EDITIONS[currentEdition] || EDITIONS.bvn26;
+        const isAnimeBattle = (currentEdition === 'animebattle');
+
+        loadingOverlay.classList.remove('hidden');
+        loadingMsg.innerText = `Đang nạp ${editionConfig.name}...`;
+        if (loadingSubMsg) {
+            loadingSubMsg.innerText = isAnimeBattle
+                ? "Khởi động engine WebAssembly 60FPS & 500 Tướng từ Cloudflare CDN..."
+                : "Khởi động engine WebAssembly 30FPS Cổ Điển sắc nét 100%";
+        }
+        if (btnSkipIntro) btnSkipIntro.classList.remove('hidden');
+
+        const baseStaticUrl = isAnimeBattle
+            ? editionConfig.base
+            : window.location.href.substring(0, window.location.href.lastIndexOf('/') + 1);
+
         rufflePlayer.config = {
             letterbox: "on",
             forceScale: true,
@@ -683,13 +753,10 @@ async function initRuffleGame() {
             splashScreen: false,
             backgroundExecutionMode: "mainThread",
             allowScriptAccess: true,
+            allowNetworking: isAnimeBattle ? "all" : "internal",
+            openUrlMode: isAnimeBattle ? "deny" : "allow",
             base: baseStaticUrl
         };
-
-        loadingOverlay.classList.remove('hidden');
-        loadingMsg.innerText = "Đang nạp Bleach vs Naruto (Host Engine)...";
-        if (loadingSubMsg) loadingSubMsg.innerText = "Khởi động engine WebAssembly 60FPS sắc nét 100%";
-        if (btnSkipIntro) btnSkipIntro.classList.remove('hidden');
 
         const hideIntroOverlay = () => {
             loadingOverlay.classList.add('hidden');
@@ -705,17 +772,24 @@ async function initRuffleGame() {
         if (btnSkipIntro) btnSkipIntro.onclick = hideIntroOverlay;
         loadingOverlay.onclick = hideIntroOverlay;
 
-        const swfUrl = await getGameSwfUrl();
-        rufflePlayer.load({
+        const swfUrl = isAnimeBattle ? editionConfig.url : await getGameSwfUrl();
+        const loadParams = {
             url: swfUrl,
-            autoplay: "on"
-        }).then(() => {
-            console.log("Game Flash đã nạp thành công trên Host!");
+            autoplay: "on",
+            allowScriptAccess: true,
+            allowNetworking: isAnimeBattle ? "all" : "internal"
+        };
+        if (isAnimeBattle && editionConfig.parameters) {
+            loadParams.parameters = editionConfig.parameters;
+        }
+
+        rufflePlayer.load(loadParams).then(() => {
+            console.log(`[Game] Đã nạp thành công phiên bản: ${editionConfig.name}`);
             findRuffleCanvas(rufflePlayer);
             setTimeout(hideIntroOverlay, 1500);
         }).catch((err) => {
-            console.warn("Lỗi tải game.swf:", err);
-            loadingMsg.innerHTML = `Chưa tìm thấy file <strong>game.swf</strong>.<br>Vui lòng kiểm tra file game trong thư mục.`;
+            console.warn("Lỗi tải game SWF:", err);
+            loadingMsg.innerHTML = `Lỗi tải phiên bản <strong>${editionConfig.name}</strong>.<br>Vui lòng kiểm tra file hoặc kết nối mạng.`;
         });
     } catch (e) {
         console.error("Lỗi khởi tạo Ruffle:", e);
@@ -932,8 +1006,9 @@ async function setupHostWebRtc() {
         if (ruffleCanvas && ruffleCanvas.captureStream) {
             try {
                 setupCanvasResizeObserver();
-                // Capture đúng 30 FPS khớp với frame rate chuẩn của Flash SWF (30 FPS)
-                const canvasStream = ruffleCanvas.captureStream(30);
+                // 30 FPS cho BVN 2.6 Cổ Điển hoặc 60 FPS cho Anime Battle 500 Tướng (Chuẩn Animugen)
+                const targetFps = (currentEdition === 'animebattle') ? 60 : 30;
+                const canvasStream = ruffleCanvas.captureStream(targetFps);
                 const videoTrack = canvasStream.getVideoTracks()[0];
                 if (videoTrack) {
                     if ('contentHint' in videoTrack) {
@@ -958,7 +1033,7 @@ async function setupHostWebRtc() {
                         videoSender = sender;
                         activeVideoSender = sender;
                     }
-                    console.log(`Host: Đã thêm ${track.kind} Track 30FPS vào WebRTC.`);
+                    console.log(`Host: Đã thêm ${track.kind} Track ${targetFps}FPS (${currentEdition}) vào WebRTC.`);
                 });
             } catch (e) {
                 console.error("Lỗi captureStream từ ruffleCanvas:", e);
@@ -1108,15 +1183,14 @@ function setupGuestWebRtc() {
 
         if (remoteVideo) {
             remoteVideo.classList.remove('hidden');
+            remoteVideo.muted = true; // Muted ban đầu để trình duyệt tự động phát hình không bị block autoplay
+            remoteVideo.setAttribute('tabindex', '0');
+            remoteVideo.playsInline = true;
+            if ('disableRemotePlayback' in remoteVideo) remoteVideo.disableRemotePlayback = true;
+            remoteVideo.addEventListener('click', () => remoteVideo.focus());
         }
         if (loadingOverlay) {
             loadingOverlay.classList.add('hidden');
-        }
-
-        const guestStream = new MediaStream();
-        if (remoteVideo) {
-            remoteVideo.srcObject = guestStream;
-            remoteVideo.muted = true; // Muted ban đầu để trình duyệt phát hình 100% ngay lập tức
         }
 
         // Tự động bật âm thanh khi người dùng click hoặc nhấn phím
@@ -1127,13 +1201,6 @@ function setupGuestWebRtc() {
         };
         window.addEventListener('click', enableAudio);
         window.addEventListener('keydown', enableAudio);
-
-        if (remoteVideo) {
-            remoteVideo.setAttribute('tabindex', '0');
-            remoteVideo.playsInline = true;
-            if ('disableRemotePlayback' in remoteVideo) remoteVideo.disableRemotePlayback = true;
-            remoteVideo.addEventListener('click', () => remoteVideo.focus());
-        }
     } else {
         // Mode 2: P2P Input Sync - Chạy trực tiếp game Flash trên máy Guest, ẩn remoteVideo
         resumeLocalRuffle();
@@ -1162,18 +1229,24 @@ function setupGuestWebRtc() {
 
     if (currentNetcodeMode === 'stream') {
         peerConnection.ontrack = (event) => {
-            console.log("Guest: Nhận media track:", event.track.kind);
-            if (event.track && remoteVideo && remoteVideo.srcObject) {
-                remoteVideo.srcObject.addTrack(event.track);
-            }
-            // Giảm jitter buffer xuống mức thấp nhất (0-50ms) để loại bỏ độ trễ truyền hình ảnh
-            applyLowLatencyReceiverHints(peerConnection);
+            console.log("[Guest WebRTC] Nhận media track:", event.track.kind);
+            if (event.track.kind !== 'video') return;
 
-            if (remoteVideo && remoteVideo.paused) {
-                remoteVideo.play().catch(err => {
-                    console.warn("Video play cần cử chỉ tương tác người dùng:", err);
+            // Animugen 0ms Low Latency Receiver API (Ép hiển thị ngay khi giải mã xong)
+            try {
+                if ('jitterBufferTarget' in event.receiver) {
+                    event.receiver.jitterBufferTarget = 0;
+                }
+            } catch (_) {}
+
+            if (remoteVideo) {
+                // Tạo MediaStream mới chứa đúng track vừa nhận (chuẩn Animugen, khử triệt để màn đen)
+                remoteVideo.srcObject = new MediaStream([event.track]);
+                void remoteVideo.play().catch(err => {
+                    console.warn("[Guest] Video play cần cử chỉ tương tác người dùng:", err);
                 });
             }
+            applyLowLatencyReceiverHints(peerConnection);
         };
     }
 
@@ -1808,6 +1881,7 @@ function handleNetworkMessage(data) {
 
         if (myRole === 'host') {
             sendFastMessage({ type: 'sync_mode', mode: currentNetcodeMode });
+            sendFastMessage({ type: 'sync_edition', edition: currentEdition });
             sendFastMessage({ type: 'sync_skip_to_menu' });
             if (currentNetcodeMode === 'input_sync') {
                 updateStatus('connected', `⚡ BẠN LÀ P1 (HOST): P2P Input Sync (0 MB Video) cùng Khách!`);
@@ -1841,6 +1915,20 @@ function handleNetworkMessage(data) {
     if (data.type === 'sync_mode') {
         console.log("Đồng bộ chế độ mạng từ Host:", data.mode);
         setNetcodeMode(data.mode, false);
+        return;
+    }
+
+    // Đồng bộ phiên bản game giữa Host và Guest
+    if (data.type === 'sync_edition') {
+        if (data.edition && EDITIONS[data.edition]) {
+            currentEdition = data.edition;
+            localStorage.setItem('bvn_game_edition', currentEdition);
+            if (gameEditionSelect) gameEditionSelect.value = currentEdition;
+            showSyncNotification(`🔄 Chủ phòng đã chọn phiên bản: ${EDITIONS[currentEdition].name}`);
+            if (currentNetcodeMode === 'input_sync' && myRole === 'guest') {
+                initRuffleGame();
+            }
+        }
         return;
     }
 

@@ -479,6 +479,47 @@ body {
     box-shadow: 0 0 10px rgba(0, 230, 118, 0.3);
 }
 
+.edition-selector-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(255, 102, 0, 0.12);
+    border: 1px solid rgba(255, 136, 0, 0.55);
+    padding: 3px 8px;
+    border-radius: 6px;
+    box-shadow: 0 0 10px rgba(255, 102, 0, 0.2);
+    transition: all 0.2s ease;
+}
+
+.edition-selector-wrapper:hover {
+    border-color: #ff9d00;
+    box-shadow: 0 0 14px rgba(255, 136, 0, 0.35);
+}
+
+.edition-label {
+    font-size: 0.78rem;
+    font-family: var(--font-heading);
+    color: #ff9d00;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+}
+
+.edition-select {
+    background: transparent;
+    color: #ffe5b4;
+    border: none;
+    font-family: var(--font-body);
+    font-size: 0.84rem;
+    font-weight: 700;
+    cursor: pointer;
+    outline: none;
+}
+
+.edition-select option {
+    background: #181210;
+    color: #fff;
+}
+
 .netplay-mode-label {
     font-size: 0.78rem;
     font-family: var(--font-heading);
