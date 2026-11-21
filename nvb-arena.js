@@ -26,7 +26,7 @@
             { sender: 'Shinigami', color: '#65C8FF', text: 'Ok, sẵn sàng rồi 🔥' }
         ],
         draft: {
-            phase: 'ban', // 'ban' | 'pick' | 'assist' | 'ready'
+            phase: 'ban', // 'ban' | 'pick' | 'assist_ban' | 'assist_pick' | 'ready' | 'free'
             tab: 'fighter', // 'fighter' | 'assist'
             search: '',
             universe: 'all',
@@ -35,6 +35,8 @@
             timerId: null,
             p1Bans: [],
             p2Bans: [],
+            p1AssistBans: [],
+            p2AssistBans: [],
             p1Picks: ['鸣人'],
             p2Picks: ['一护'],
             p1Assist: null,
@@ -45,6 +47,10 @@
         },
         tceamCatalog: null
     };
+
+    function hasAssist() {
+        return state.edition !== '500';
+    }
 
     function getFighters() {
         if (state.edition === '500' && state.tceamCatalog) {
@@ -126,10 +132,13 @@
         const fighters = getFighters();
         const firstP1 = fighters.find(f => f.id === '鸣人')?.id || fighters[0]?.id || '鸣人';
         const firstP2 = fighters.find(f => f.id === '一护')?.id || fighters[1]?.id || '一护';
-        state.draft.phase = state.settings.banPick ? 'ban' : 'pick';
+        const isFree = state.mode === 'training';
+        state.draft.phase = isFree ? 'free' : (state.settings.banPick ? 'ban' : 'pick');
         state.draft.tab = 'fighter';
         state.draft.p1Bans = [];
         state.draft.p2Bans = [];
+        state.draft.p1AssistBans = [];
+        state.draft.p2AssistBans = [];
         state.draft.p1Picks = [firstP1];
         state.draft.p2Picks = [firstP2];
         state.draft.p1Assist = null;
@@ -137,24 +146,36 @@
         state.draft.selectedCandidate = firstP1;
         state.draft.p1Locked = false;
         state.draft.p2Locked = true;
-        startDraftTimer();
+        if (!isFree) startDraftTimer();
+        else stopTimer();
     }
 
-    function autoOpponentBans() {
-        const fighters = getFighters();
-        const taken = new Set([...state.draft.p1Bans, ...state.draft.p2Bans, ...state.draft.p1Picks, ...state.draft.p2Picks]);
-        while (state.draft.p2Bans.length < 3) {
-            const pool = fighters.filter(f => !taken.has(f.id));
-            if (!pool.length) break;
-            const pick = pool[Math.floor(Math.random() * Math.min(pool.length, 15))];
-            state.draft.p2Bans.push(pick.id);
-            taken.add(pick.id);
-        }
+    function pickRandomFromPool(pool, excludeSet) {
+        const avail = pool.filter(x => !excludeSet.has(x.id));
+        if (!avail.length) return null;
+        return avail[Math.floor(Math.random() * Math.min(avail.length, 15))].id;
+    }
+
+    function autoOpponentStepBan(isAssist) {
+        const d = state.draft;
+        const limit = isAssist ? 2 : 3;
+        const p2List = isAssist ? d.p2AssistBans : d.p2Bans;
+        const p1List = isAssist ? d.p1AssistBans : d.p1Bans;
+        if (p2List.length >= limit) return;
+        const pool = isAssist ? getAssists() : getFighters();
+        const taken = new Set([...p1List, ...p2List]);
+        const picked = pickRandomFromPool(pool, taken);
+        if (picked) p2List.push(picked);
     }
 
     function handleConfirmAction() {
         const d = state.draft;
         const neededPicks = state.mode === '3v3' ? 3 : 1;
+
+        if (d.phase === 'free') {
+            launchIntoGame();
+            return;
+        }
 
         if (d.phase === 'ban') {
             const fighters = getFighters();
@@ -164,9 +185,17 @@
                 if (!avail) break;
                 d.p1Bans.push(avail.id);
                 taken.add(avail.id);
+                if (d.p2Bans.length < 3) {
+                    const p2Pick = pickRandomFromPool(fighters, taken);
+                    if (p2Pick) { d.p2Bans.push(p2Pick); taken.add(p2Pick); }
+                }
             }
-            autoOpponentBans();
-            // Ensure P1/P2 default picks aren't banned
+            while (d.p2Bans.length < 3) {
+                const p2Pick = pickRandomFromPool(fighters, taken);
+                if (!p2Pick) break;
+                d.p2Bans.push(p2Pick);
+                taken.add(p2Pick);
+            }
             const bannedSet = new Set([...d.p1Bans, ...d.p2Bans]);
             const availPicks = fighters.filter(f => !bannedSet.has(f.id));
             if (bannedSet.has(d.p1Picks[0]) && availPicks[0]) d.p1Picks = [availPicks[0].id];
@@ -192,19 +221,57 @@
                 if (!next) break;
                 d.p2Picks.push(next.id);
             }
-            d.phase = 'assist';
-            d.tab = 'assist';
+            if (hasAssist()) {
+                d.phase = 'assist_ban';
+                d.tab = 'assist';
+                const assists = getAssists();
+                d.selectedCandidate = assists[0]?.id || null;
+                startDraftTimer();
+            } else {
+                d.phase = 'ready';
+                stopTimer();
+            }
+            render();
+            return;
+        }
+
+        if (d.phase === 'assist_ban') {
             const assists = getAssists();
-            d.selectedCandidate = d.p1Assist || assists[0]?.id || null;
+            const taken = new Set([...d.p1AssistBans, ...d.p2AssistBans]);
+            while (d.p1AssistBans.length < 2) {
+                const avail = assists.find(a => !taken.has(a.id));
+                if (!avail) break;
+                d.p1AssistBans.push(avail.id);
+                taken.add(avail.id);
+                if (d.p2AssistBans.length < 2) {
+                    const p2A = pickRandomFromPool(assists, taken);
+                    if (p2A) { d.p2AssistBans.push(p2A); taken.add(p2A); }
+                }
+            }
+            while (d.p2AssistBans.length < 2) {
+                const p2A = pickRandomFromPool(assists, taken);
+                if (!p2A) break;
+                d.p2AssistBans.push(p2A);
+                taken.add(p2A);
+            }
+            const bannedA = new Set([...d.p1AssistBans, ...d.p2AssistBans]);
+            const availA = assists.filter(a => !bannedA.has(a.id));
+            d.p1Assist = availA[0]?.id || null;
+            d.p2Assist = availA[1]?.id || availA[0]?.id || null;
+            d.selectedCandidate = d.p1Assist;
+            d.phase = 'assist_pick';
+            d.tab = 'assist';
             startDraftTimer();
             render();
             return;
         }
 
-        if (d.phase === 'assist') {
+        if (d.phase === 'assist_pick') {
             const assists = getAssists();
-            if (!d.p1Assist && assists[0]) d.p1Assist = assists[0].id;
-            if (!d.p2Assist && assists[1]) d.p2Assist = assists[1].id;
+            const bannedA = new Set([...d.p1AssistBans, ...d.p2AssistBans]);
+            const availA = assists.filter(a => !bannedA.has(a.id));
+            if (!d.p1Assist && availA[0]) d.p1Assist = availA[0].id;
+            if (!d.p2Assist && availA[1]) d.p2Assist = availA[1].id;
             d.phase = 'ready';
             stopTimer();
             render();
@@ -347,11 +414,14 @@
 
     function renderScreen2() {
         const edLabel = state.edition === '500' ? '500 TƯỚNG / MỞ RỘNG' : 'BẢN 2.6 / CLASSIC';
+        const assistNote = hasAssist() ? ' + 1 hỗ trợ' : ' (Không hỗ trợ)';
+        const assistBanNote = hasAssist() ? 'Cấm 3 tướng + 2 hỗ trợ · Chọn mù' : 'Cấm 3 tướng · Chọn mù';
         const modes = [
-            { id: '1v1', num: '01', badge: '1 VS 1', title: 'ĐẤU ĐƠN', tagline: 'Một đối thủ. Một cơ hội tỏa sáng.', desc: '1 tướng chính + 1 hỗ trợ / người\nCấm 3 tướng mỗi bên · Thể thức BO3', img: 'assets/avatars/naruto.png' },
-            { id: '3v3', num: '02', badge: '3 VS 3', title: 'ĐẤU ĐỘI', tagline: 'Xây đội hình. Làm chủ mọi kèo đấu.', desc: '3 tướng chính + 1 hỗ trợ / người\nCấm 3 tướng mỗi bên · Giao lưu chiến thuật', img: 'assets/avatars/sasuke_susanoo.png' },
-            { id: 'training', num: '03', badge: 'SOLO / VS CPU', title: 'LUYỆN TẬP', tagline: 'Thử combo mới. Sẵn sàng bứt phá.', desc: 'Tự do chọn tướng và hỗ trợ\nTùy chỉnh độ khó CPU hoặc tập tự do', img: 'assets/avatars/kakashi.png' }
+            { id: '1v1', num: '01', badge: '1 VS 1', title: 'ĐẤU ĐƠN', tagline: 'Chơi với bạn · Tự động tạo phòng.', desc: `1 tướng chính${assistNote} / người\n${assistBanNote}`, img: 'assets/avatars/naruto.png' },
+            { id: '3v3', num: '02', badge: '3 VS 3', title: 'ĐẤU ĐỘI', tagline: 'Chơi với bạn · Xây đội hình 3v3.', desc: `3 tướng chính${assistNote} / người\n${assistBanNote}`, img: 'assets/avatars/sasuke_susanoo.png' },
+            { id: 'training', num: '03', badge: 'SOLO / LUYỆN TẬP', title: 'LUYỆN TẬP', tagline: 'Chơi đơn · Vào thẳng trận không cần cấm chọn.', desc: `Tự do chọn tướng${hasAssist() ? ' và hỗ trợ' : ''}\nKhông cấm chọn · Vào ngay đấu trường`, img: 'assets/avatars/kakashi.png' }
         ];
+        const isSolo = state.mode === 'training';
         return `
         <div class="nvb-subhead">
             <button class="nvb-back-link" id="nvbBackTo1">← Đổi phiên bản</button>
@@ -361,7 +431,7 @@
         <div class="nvb-page-title-row">
             <div>
                 <h1>BẠN MUỐN ĐẤU THẾ NÀO?</h1>
-                <p>Chọn chế độ, tạo phòng và gửi mã cho đối thủ</p>
+                <p>${isSolo ? 'Chế độ Luyện tập / Chơi đơn vào thẳng chọn tướng, không cần tạo phòng.' : 'Chọn Đấu Đơn hoặc Đấu Đội để tự động tạo phòng Cấm & Chọn với bạn bè.'}</p>
             </div>
             <div class="nvb-step-tag">02 / 04</div>
         </div>
@@ -389,10 +459,10 @@
 
         <div class="nvb-quick-rules">
             <div>
-                <small>LUẬT PHÒNG MẶC ĐỊNH</small>
-                <strong>${state.settings.banPick ? 'Cấm & chọn' : 'Chọn tự do'} &nbsp;•&nbsp; ${state.settings.format.split(' · ')[0]} &nbsp;•&nbsp; ${state.settings.turnTime} giây / lượt &nbsp;•&nbsp; ${state.settings.allowMirror ? 'Cho phép trùng tướng' : 'Không trùng tướng'}</strong>
+                <small>LUẬT CHẾ ĐỘ ĐANG CHỌN</small>
+                <strong>${isSolo ? 'Chọn tướng tự do · Không cấm chọn · Vào thẳng trận' : `${assistBanNote} • ${state.settings.format.split(' · ')[0]} • ${state.settings.turnTime}s / lượt`}</strong>
             </div>
-            <div style="font-size:12px;color:var(--nvb-muted)">Có thể thay đổi trong phòng</div>
+            <div style="font-size:12px;color:var(--nvb-muted)">${isSolo ? 'Chế độ chơi đơn' : 'Tự động tạo phòng khi tiếp tục'}</div>
         </div>
 
         <div class="nvb-mode-actions">
@@ -401,7 +471,7 @@
                 <input class="nvb-input-dark" id="nvbJoinCodeInput" placeholder="Nhập mã phòng" style="width:185px">
                 <button class="nvb-btn-dark" id="nvbJoinRoomBtn" style="min-width:130px">Vào phòng</button>
             </div>
-            <button class="nvb-btn-gold" id="nvbCreateRoomBtn" style="min-width:240px"><span>Tạo phòng đấu</span><span>→</span></button>
+            <button class="nvb-btn-gold" id="nvbCreateRoomBtn" style="min-width:240px"><span>${isSolo ? 'Vào chọn tướng' : 'Tạo phòng đấu'}</span><span>→</span></button>
         </div>`;
     }
 
@@ -528,32 +598,49 @@
         const d = state.draft;
         const fighters = getFighters();
         const assists = getAssists();
-        const isAssistTab = d.tab === 'assist';
+        const showAssist = hasAssist();
+        const isFree = d.phase === 'free';
+        const isAssistTab = showAssist && (d.tab === 'assist');
         const q = d.search.trim().toLowerCase();
-        const bannedSet = new Set([...d.p1Bans, ...d.p2Bans]);
+        const bannedMainSet = new Set([...d.p1Bans, ...d.p2Bans]);
+        const bannedAssistSet = new Set([...d.p1AssistBans, ...d.p2AssistBans]);
+        const activeBanSet = isAssistTab ? bannedAssistSet : bannedMainSet;
+
+        const isBlindMain = d.phase === 'pick' || d.phase === 'ban';
+        const isBlindAssist = d.phase === 'assist_pick' || d.phase === 'assist_ban';
+        const revealP2Main = isFree || d.phase === 'assist_ban' || d.phase === 'assist_pick' || d.phase === 'ready';
+        const revealP2Assist = isFree || d.phase === 'ready';
 
         const list = (isAssistTab ? assists : fighters).filter(c => {
             if (d.universe !== 'all' && c.universe !== d.universe) return false;
-            if (d.onlyAvailable && (bannedSet.has(c.id) || d.p1Picks.includes(c.id) || d.p2Picks.includes(c.id))) return false;
+            if (d.onlyAvailable && (activeBanSet.has(c.id) || d.p1Picks.includes(c.id) || (revealP2Main && d.p2Picks.includes(c.id)))) return false;
             if (!q) return true;
             return c.name.toLowerCase().includes(q) || c.id.toLowerCase().includes(q);
         });
 
-        const phaseText = d.phase === 'ban'
-            ? `Bạn đang cấm tướng (${d.p1Bans.length}/3)`
-            : d.phase === 'pick'
-                ? 'Bạn đang chọn tướng chính'
-                : d.phase === 'assist'
-                    ? 'Bạn đang chọn tướng hỗ trợ'
-                    : 'Đội hình đã sẵn sàng — bấm Xuất trận!';
+        const phaseText = isFree
+            ? 'Chế độ Luyện tập / Chơi đơn — Chọn tướng tự do rồi bấm Xuất trận'
+            : d.phase === 'ban'
+                ? `Lần lượt cấm 3 tướng chính (${d.p1Bans.length}/3)`
+                : d.phase === 'pick'
+                    ? 'Chọn mù tướng chính (Đối thủ không thấy lựa chọn của bạn)'
+                    : d.phase === 'assist_ban'
+                        ? `Lần lượt cấm 2 nhân vật phụ (${d.p1AssistBans.length}/2)`
+                        : d.phase === 'assist_pick'
+                            ? 'Chọn mù 1 nhân vật phụ (Đối thủ không thấy lựa chọn)'
+                            : 'Hai bên đã khóa xong — Sẵn sàng Xuất trận!';
 
-        const confirmLabel = d.phase === 'ban'
-            ? 'XÁC NHẬN CẤM →'
-            : d.phase === 'pick'
-                ? 'KHÓA TƯỚNG →'
-                : d.phase === 'assist'
-                    ? 'KHÓA HỖ TRỢ →'
-                    : 'XUẤT TRẬN →';
+        const confirmLabel = isFree
+            ? 'XUẤT TRẬN →'
+            : d.phase === 'ban'
+                ? 'KHÓA CẤM TƯỚNG →'
+                : d.phase === 'pick'
+                    ? 'KHÓA CHỌN MÙ →'
+                    : d.phase === 'assist_ban'
+                        ? 'KHÓA CẤM HỖ TRỢ →'
+                        : d.phase === 'assist_pick'
+                            ? 'KHÓA HỖ TRỢ →'
+                            : 'XUẤT TRẬN →';
 
         const p1Main = findChar(d.p1Picks[0]) || fighters[0];
         const p2Main = findChar(d.p2Picks[0]) || fighters[1];
@@ -561,44 +648,54 @@
         const p2A = d.p2Assist ? findChar(d.p2Assist) : null;
         const selObj = findChar(d.selectedCandidate) || p1Main;
 
-        const renderBans = (bans) => [0, 1, 2].map(i => {
+        const renderBans = (bans, count = 3) => Array.from({ length: count }, (_, i) => {
             const c = bans[i] ? findChar(bans[i]) : null;
             return `<div class="nvb-ban-slot">${c ? `<img src="${c.avatar}" alt="${c.name}"><div class="nvb-ban-tag">╱ CẤM</div>` : '+'}</div>`;
         }).join('');
 
+        const stepsHtml = isFree ? '' : (showAssist ? `
+        <div class="nvb-steps-bar" style="grid-template-columns:repeat(5,1fr)">
+            <div class="nvb-step-pill ${d.phase === 'ban' ? 'active' : 'done'}">01 CẤM TƯỚNG (3) ${d.phase !== 'ban' ? '✓' : ''}</div>
+            <div class="nvb-step-pill ${d.phase === 'pick' ? 'active' : (['assist_ban','assist_pick','ready'].includes(d.phase) ? 'done' : '')}">02 CHỌN MÙ TƯỚNG ${['assist_ban','assist_pick','ready'].includes(d.phase) ? '✓' : ''}</div>
+            <div class="nvb-step-pill ${d.phase === 'assist_ban' ? 'active' : (['assist_pick','ready'].includes(d.phase) ? 'done' : '')}">03 CẤM HỖ TRỢ (2) ${['assist_pick','ready'].includes(d.phase) ? '✓' : ''}</div>
+            <div class="nvb-step-pill ${d.phase === 'assist_pick' ? 'active' : (d.phase === 'ready' ? 'done' : '')}">04 CHỌN MÙ HỖ TRỢ ${d.phase === 'ready' ? '✓' : ''}</div>
+            <div class="nvb-step-pill ${d.phase === 'ready' ? 'active' : ''}">05 VÀO TRẬN</div>
+        </div>` : `
+        <div class="nvb-steps-bar" style="grid-template-columns:repeat(3,1fr)">
+            <div class="nvb-step-pill ${d.phase === 'ban' ? 'active' : 'done'}">01 CẤM TƯỚNG (3) ${d.phase !== 'ban' ? '✓' : ''}</div>
+            <div class="nvb-step-pill ${d.phase === 'pick' ? 'active' : (d.phase === 'ready' ? 'done' : '')}">02 CHỌN MÙ TƯỚNG ${d.phase === 'ready' ? '✓' : ''}</div>
+            <div class="nvb-step-pill ${d.phase === 'ready' ? 'active' : ''}">03 VÀO TRẬN</div>
+        </div>`);
+
         return `
         <div class="nvb-match-bar">
             <div style="display:flex;gap:36px">
-                <span>PHÒNG ${state.roomCode.replace('NVB • ', '')}</span>
-                <span style="color:var(--nvb-muted)">${state.edition === '500' ? '500 TƯỚNG' : 'BẢN 2.6'} &nbsp;/&nbsp; ${state.mode.toUpperCase()} &nbsp;/&nbsp; ${state.settings.format.split(' · ')[0]}</span>
+                <span>${isFree ? 'CHẾ ĐỘ LUYỆN TẬP / CHƠI ĐƠN' : 'PHÒNG ' + state.roomCode.replace('NVB • ', '')}</span>
+                <span style="color:var(--nvb-muted)">${state.edition === '500' ? '500 TƯỚNG (KHÔNG HỖ TRỢ)' : 'BẢN 2.6'} &nbsp;/&nbsp; ${state.mode.toUpperCase()}</span>
             </div>
             <div style="display:flex;gap:48px">
-                <span>VÁN 01 / 03</span>
-                <span style="color:var(--nvb-muted)">${state.playerName.toUpperCase()} &nbsp; 0 : 0 &nbsp; ${state.opponentName.toUpperCase()}</span>
+                <span>${isFree ? 'KHÔNG CẤM CHỌN' : 'VÁN 01 / 03'}</span>
+                <span style="color:var(--nvb-muted)">${state.playerName.toUpperCase()} &nbsp; vs &nbsp; ${isFree ? 'CPU / FREE' : state.opponentName.toUpperCase()}</span>
             </div>
         </div>
 
         <div class="nvb-draft-head">
             <div>
-                <h1>CẤM & CHỌN</h1>
+                <h1>${isFree ? 'CHỌN TƯỚNG LUYỆN TẬP' : 'CẤM & CHỌN MÙ'}</h1>
                 <div class="nvb-draft-sub">${phaseText}</div>
             </div>
+            ${isFree ? '' : `
             <div class="nvb-timer-box">
                 <small>LƯỢT CỦA BẠN</small>
                 <strong id="nvbTimerValue">00:${String(Math.max(0, d.timer)).padStart(2, '0')}</strong>
-            </div>
+            </div>`}
             <div style="text-align:right">
-                <div style="font-size:12px;font-weight:600;color:var(--nvb-cyan)">Đối thủ đã khóa ${p2Main ? p2Main.name : 'Ichigo'}</div>
-                <div style="font-size:11px;color:var(--nvb-muted);margin-top:4px">Chọn tướng → Khóa lựa chọn</div>
+                <div style="font-size:12px;font-weight:600;color:var(--nvb-cyan)">${revealP2Main ? `Đối thủ: ${p2Main ? p2Main.name : 'Ichigo'}` : 'Đối thủ đang chọn mù (Ẩn)'}</div>
+                <div style="font-size:11px;color:var(--nvb-muted);margin-top:4px">${isFree ? 'Chọn tướng rồi bấm Xuất trận' : 'Chọn mù sẽ chỉ hiện sau khi khóa'}</div>
             </div>
         </div>
 
-        <div class="nvb-steps-bar">
-            <div class="nvb-step-pill ${d.phase === 'ban' ? 'active' : 'done'}">01 &nbsp; CẤM TƯỚNG ${d.phase !== 'ban' ? '✓' : ''}</div>
-            <div class="nvb-step-pill ${d.phase === 'pick' ? 'active' : (d.phase === 'assist' || d.phase === 'ready' ? 'done' : '')}">02 &nbsp; TƯỚNG CHÍNH ${(d.phase === 'assist' || d.phase === 'ready') ? '✓' : ''}</div>
-            <div class="nvb-step-pill ${d.phase === 'assist' ? 'active' : (d.phase === 'ready' ? 'done' : '')}">03 &nbsp; TƯỚNG HỖ TRỢ ${d.phase === 'ready' ? '✓' : ''}</div>
-            <div class="nvb-step-pill ${d.phase === 'ready' ? 'active' : ''}">04 &nbsp; VÀO TRẬN</div>
-        </div>
+        ${stepsHtml}
 
         <div class="nvb-draft-board">
             <div class="nvb-team-col">
@@ -606,37 +703,44 @@
                     <div class="nvb-team-label">ĐỘI A / BẠN</div>
                     <h3 class="nvb-team-name">${state.playerName.toUpperCase()}</h3>
                 </div>
+                ${isFree ? '' : `
                 <div>
-                    <div style="font-size:10px;font-weight:700;color:var(--nvb-muted);margin-bottom:8px">ĐÃ CẤM &nbsp; ${d.p1Bans.length} / 3</div>
-                    <div class="nvb-ban-row">${renderBans(d.p1Bans)}</div>
-                </div>
+                    <div style="font-size:10px;font-weight:700;color:var(--nvb-muted);margin-bottom:8px">CẤM TƯỚNG &nbsp; ${d.p1Bans.length} / 3</div>
+                    <div class="nvb-ban-row">${renderBans(d.p1Bans, 3)}</div>
+                </div>`}
                 <div>
                     <div style="font-size:10px;font-weight:700;color:var(--nvb-gold);margin-bottom:8px">TƯỚNG CHÍNH (${d.p1Picks.length})</div>
                     <div class="nvb-pick-card" id="nvbSlotP1Main">
                         <img src="${p1Main?.avatar || 'assets/avatars/naruto.png'}" alt="">
                         <div class="nvb-pick-info">
                             <strong>${(p1Main?.name || 'NARUTO').toUpperCase()}</strong>
-                            <span>${d.phase === 'pick' ? 'Đang chọn…' : '✓ Đã chọn'}</span>
+                            <span>${d.phase === 'pick' || isFree ? 'Đang chọn…' : '✓ Đã khóa'}</span>
                             <small style="font-size:10px;color:var(--nvb-muted)">${p1Main?.role || ''}</small>
                         </div>
                     </div>
                 </div>
+                ${showAssist ? `
+                ${isFree ? '' : `
+                <div>
+                    <div style="font-size:10px;font-weight:700;color:var(--nvb-muted);margin-bottom:8px">CẤM HỖ TRỢ &nbsp; ${d.p1AssistBans.length} / 2</div>
+                    <div class="nvb-ban-row" style="grid-template-columns:repeat(2,1fr)">${renderBans(d.p1AssistBans, 2)}</div>
+                </div>`}
                 <div>
                     <div style="font-size:10px;font-weight:700;color:var(--nvb-muted);margin-bottom:8px">TƯỚNG HỖ TRỢ</div>
                     <div class="nvb-assist-slot" id="nvbSlotP1Assist">
                         ${p1A ? `<img src="${p1A.avatar}" alt=""><div><strong style="font-size:12px">${p1A.name}</strong><div style="font-size:10px;color:var(--nvb-mint)">✓ Đã chọn</div></div>`
-                            : `<span style="font-size:26px;color:var(--nvb-muted)">+</span><div><div style="font-size:12px;font-weight:500;color:var(--nvb-muted)">Chưa lựa chọn</div><div style="font-size:9px;color:var(--nvb-muted)">Chọn ở giai đoạn 03</div></div>`}
+                            : `<span style="font-size:26px;color:var(--nvb-muted)">+</span><div><div style="font-size:12px;font-weight:500;color:var(--nvb-muted)">Chưa lựa chọn</div><div style="font-size:9px;color:var(--nvb-muted)">Chọn nhân vật phụ</div></div>`}
                     </div>
-                </div>
+                </div>` : ''}
             </div>
 
             <div class="nvb-roster-panel">
                 <div class="nvb-roster-tabs">
                     <div class="nvb-tab-group">
-                        <button class="nvb-tab-btn ${d.tab === 'fighter' ? 'active' : ''}" data-tab="fighter">TƯỚNG CHÍNH</button>
-                        <button class="nvb-tab-btn ${d.tab === 'assist' ? 'active' : ''}" data-tab="assist">TƯỚNG HỖ TRỢ</button>
+                        <button class="nvb-tab-btn ${!isAssistTab ? 'active' : ''}" data-tab="fighter">TƯỚNG CHÍNH</button>
+                        ${showAssist ? `<button class="nvb-tab-btn ${isAssistTab ? 'active' : ''}" data-tab="assist">TƯỚNG HỖ TRỢ</button>` : ''}
                     </div>
-                    <span style="font-size:10px;color:var(--nvb-muted)">${list.length} tướng hiển thị</span>
+                    <span style="font-size:10px;color:var(--nvb-muted)">${list.length} nhân vật hiển thị</span>
                 </div>
 
                 <div class="nvb-roster-filters">
@@ -655,9 +759,9 @@
 
                 <div class="nvb-roster-grid">
                     ${list.map(c => {
-                        const isBanned = bannedSet.has(c.id);
+                        const isBanned = activeBanSet.has(c.id);
                         const isP1 = isAssistTab ? d.p1Assist === c.id : d.p1Picks.includes(c.id);
-                        const isP2 = isAssistTab ? d.p2Assist === c.id : d.p2Picks.includes(c.id);
+                        const isP2 = isAssistTab ? (revealP2Assist && d.p2Assist === c.id) : (revealP2Main && d.p2Picks.includes(c.id));
                         let badge = '';
                         let cls = '';
                         if (isBanned) { cls = 'banned'; badge = `<div class="nvb-tile-status ban">╱ ĐÃ CẤM</div>`; }
@@ -672,46 +776,60 @@
                     }).join('')}
                 </div>
 
-                <div style="font-size:10px;color:var(--nvb-muted)">Cấm áp dụng cho cả hai đội. Không thể chọn tướng đã bị cấm.</div>
+                <div style="font-size:10px;color:var(--nvb-muted)">${isFree ? 'Nhấn chọn tướng muốn tập và bấm Xuất trận.' : 'Cấm áp dụng cho cả hai đội. Chọn mù ẩn lựa chọn của đối thủ cho đến khi khóa.'}</div>
             </div>
 
             <div class="nvb-team-col p2">
                 <div>
-                    <div class="nvb-team-label">ĐỘI B / ĐỐI THỦ</div>
-                    <h3 class="nvb-team-name">${state.opponentName.toUpperCase()}</h3>
+                    <div class="nvb-team-label">${isFree ? 'ĐỘI B / CPU' : 'ĐỘI B / ĐỐI THỦ'}</div>
+                    <h3 class="nvb-team-name">${isFree ? 'BOT / CPU' : state.opponentName.toUpperCase()}</h3>
                 </div>
+                ${isFree ? '' : `
                 <div>
-                    <div style="font-size:10px;font-weight:700;color:var(--nvb-muted);margin-bottom:8px">ĐÃ CẤM &nbsp; ${d.p2Bans.length} / 3</div>
-                    <div class="nvb-ban-row">${renderBans(d.p2Bans)}</div>
-                </div>
+                    <div style="font-size:10px;font-weight:700;color:var(--nvb-muted);margin-bottom:8px">CẤM TƯỚNG &nbsp; ${d.p2Bans.length} / 3</div>
+                    <div class="nvb-ban-row">${renderBans(d.p2Bans, 3)}</div>
+                </div>`}
                 <div>
                     <div style="font-size:10px;font-weight:700;color:var(--nvb-cyan);margin-bottom:8px">TƯỚNG CHÍNH (${d.p2Picks.length})</div>
                     <div class="nvb-pick-card">
+                        ${revealP2Main ? `
                         <img src="${p2Main?.avatar || 'assets/avatars/ichigo.png'}" alt="">
                         <div class="nvb-pick-info">
                             <strong>${(p2Main?.name || 'ICHIGO').toUpperCase()}</strong>
                             <span>✓ Đã khóa</span>
                             <small style="font-size:10px;color:var(--nvb-muted)">${p2Main?.role || ''}</small>
-                        </div>
+                        </div>` : `
+                        <div style="width:96px;height:100%;background:#131A26;display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:900;color:var(--nvb-cyan)">?</div>
+                        <div class="nvb-pick-info">
+                            <strong>CHỌN MÙ (ẨN)</strong>
+                            <span>${d.phase === 'pick' ? '⏳ Đã khóa ẩn' : 'Đang chờ…'}</span>
+                            <small style="font-size:10px;color:var(--nvb-muted)">Mở sau khi 2 bên khóa</small>
+                        </div>`}
                     </div>
                 </div>
+                ${showAssist ? `
+                ${isFree ? '' : `
+                <div>
+                    <div style="font-size:10px;font-weight:700;color:var(--nvb-muted);margin-bottom:8px">CẤM HỖ TRỢ &nbsp; ${d.p2AssistBans.length} / 2</div>
+                    <div class="nvb-ban-row" style="grid-template-columns:repeat(2,1fr)">${renderBans(d.p2AssistBans, 2)}</div>
+                </div>`}
                 <div>
                     <div style="font-size:10px;font-weight:700;color:var(--nvb-muted);margin-bottom:8px">TƯỚNG HỖ TRỢ</div>
                     <div class="nvb-assist-slot">
-                        ${p2A ? `<img src="${p2A.avatar}" alt=""><div><strong style="font-size:12px">${p2A.name}</strong><div style="font-size:10px;color:var(--nvb-cyan)">✓ Đã khóa</div></div>`
-                            : `<span style="font-size:26px;color:var(--nvb-muted)">+</span><div><div style="font-size:12px;font-weight:500;color:var(--nvb-muted)">Chưa lựa chọn</div><div style="font-size:9px;color:var(--nvb-muted)">Chọn ở giai đoạn 03</div></div>`}
+                        ${revealP2Assist && p2A ? `<img src="${p2A.avatar}" alt=""><div><strong style="font-size:12px">${p2A.name}</strong><div style="font-size:10px;color:var(--nvb-cyan)">✓ Đã khóa</div></div>`
+                            : `<span style="font-size:22px;color:var(--nvb-cyan);font-weight:900">?</span><div><div style="font-size:12px;font-weight:500;color:var(--nvb-muted)">${isBlindAssist ? 'Đang chọn mù (Ẩn)' : 'Chưa mở'}</div><div style="font-size:9px;color:var(--nvb-muted)">Mở sau khi khóa</div></div>`}
                     </div>
-                </div>
+                </div>` : ''}
             </div>
         </div>
 
         <div class="nvb-confirm-bar">
             <div>
                 <div style="font-size:13px;font-weight:700">ĐANG CHỌN: ${(selObj?.name || 'NARUTO UZUMAKI').toUpperCase()}</div>
-                <div style="font-size:11px;color:var(--nvb-muted);margin-top:4px">Hết giờ sẽ tự khóa lựa chọn hiện tại. Bấm nút bên phải để chuyển bước tiếp theo.</div>
+                <div style="font-size:11px;color:var(--nvb-muted);margin-top:4px">${isFree ? 'Không cần cấm chọn trong chế độ Luyện tập.' : 'Hai bên chọn mù độc lập — danh tính chỉ lộ khi bước vào trận.'}</div>
             </div>
             <div style="display:flex;align-items:center;gap:24px">
-                <span style="font-size:11px;font-weight:500;color:var(--nvb-cyan)">${d.phase === 'ready' ? 'Sẵn sàng vào đấu trường!' : 'Lượt tiếp: Đối thủ & Hỗ trợ'}</span>
+                <span style="font-size:11px;font-weight:500;color:var(--nvb-cyan)">${d.phase === 'ready' || isFree ? 'Sẵn sàng vào đấu trường!' : 'Đang trong phiên Cấm & Chọn'}</span>
                 <button class="nvb-btn-gold" id="nvbConfirmDraftBtn" style="min-width:244px;justify-content:center">${confirmLabel}</button>
             </div>
         </div>`;
@@ -857,10 +975,17 @@
         });
 
         const createBtn = document.getElementById('nvbCreateRoomBtn');
-        if (createBtn) createBtn.onclick = () => {
-            state.roomCode = 'NVB • ' + Math.random().toString(36).substring(2, 6).toUpperCase();
-            state.screen = 3;
-            render();
+        if (createBtn) createBtn.onclick = async () => {
+            if (state.mode === 'training') {
+                if (state.edition === '500') await ensureTceamCatalog();
+                resetDraft();
+                state.screen = 4;
+                render();
+            } else {
+                state.roomCode = 'NVB • ' + Math.random().toString(36).substring(2, 6).toUpperCase();
+                state.screen = 3;
+                render();
+            }
         };
 
         const joinBtn = document.getElementById('nvbJoinRoomBtn');
@@ -937,10 +1062,30 @@
                 d.selectedCandidate = id;
                 if (d.phase === 'ban') {
                     const idx = d.p1Bans.indexOf(id);
-                    if (idx !== -1) d.p1Bans.splice(idx, 1);
-                    else if (d.p1Bans.length < 3) d.p1Bans.push(id);
-                } else if (d.tab === 'assist' || d.phase === 'assist') {
-                    d.p1Assist = id;
+                    if (idx !== -1) {
+                        d.p1Bans.splice(idx, 1);
+                    } else if (d.p1Bans.length < 3) {
+                        d.p1Bans.push(id);
+                        autoOpponentStepBan(false);
+                        if (d.p1Bans.length === 3 && d.p2Bans.length === 3) {
+                            handleConfirmAction();
+                            return;
+                        }
+                    }
+                } else if (d.phase === 'assist_ban') {
+                    const idx = d.p1AssistBans.indexOf(id);
+                    if (idx !== -1) {
+                        d.p1AssistBans.splice(idx, 1);
+                    } else if (d.p1AssistBans.length < 2) {
+                        d.p1AssistBans.push(id);
+                        autoOpponentStepBan(true);
+                        if (d.p1AssistBans.length === 2 && d.p2AssistBans.length === 2) {
+                            handleConfirmAction();
+                            return;
+                        }
+                    }
+                } else if (d.tab === 'assist' || d.phase === 'assist_pick') {
+                    if (hasAssist()) d.p1Assist = id;
                 } else {
                     const needed = state.mode === '3v3' ? 3 : 1;
                     if (needed === 1) {
