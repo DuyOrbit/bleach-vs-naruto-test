@@ -32,7 +32,12 @@ app.use((req, res, next) => {
     next();
 });
 
-app.use(express.json());
+app.use((req, res, next) => {
+    if (req.body && typeof req.body === 'object') {
+        return next();
+    }
+    express.json()(req, res, next);
+});
 
 // ==========================================
 // VERCEL / SERVERLESS SIGNALING ENDPOINTS (HONG KONG / SINGAPORE - 15ms PING)
@@ -319,7 +324,7 @@ app.get('*', (req, res) => {
 // Xử lý lỗi an toàn
 app.use((err, req, res, next) => {
     console.error('Server error:', err);
-    res.status(500).send('Internal Server Error');
+    res.status(500).json({ error: err.message || 'Internal Server Error' });
 });
 
 // 6. Bảo vệ tiến trình không bao giờ crash bất ngờ
