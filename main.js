@@ -4396,7 +4396,7 @@ function launchMatchNow() {
 
     closeBanPickModal();
     focusGame();
-    showSyncNotification(`⚔️ ĐÃ VÀO TRẬN ĐẤU: ${findRosterItem(bpState.p1.fighter).name} vs ${findRosterItem(bpState.p2.fighter).name}!`);
+    showSyncNotification(`⏳ Đang tự động chọn tướng & trợ thủ vào trận: ${findRosterItem(bpState.p1.fighter).name} vs ${findRosterItem(bpState.p2.fighter).name}...`, 9000);
 }
 
 if (btnLaunchMatch) {
