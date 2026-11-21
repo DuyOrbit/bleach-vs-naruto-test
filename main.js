@@ -3861,81 +3861,81 @@ if (btnWsEndMatch) {
 // ==========================================
 const BVN_MASTER_ROSTER = {
     bleach: [
-        { id: '一护', name: 'Ichigo Kurosaki', sub: 'Thần Chết', icon: '🗡️', pos: { row: 4, col: 4 } },
-        { id: '一护万解', name: 'Ichigo Bankai', sub: 'Vạn Giải', icon: '⚡', pos: { row: 3, col: 4 } },
-        { id: '一护虚化', name: 'Ichigo Hollow', sub: 'Mặt Nạ Hư', icon: '🎭', pos: { row: 0, col: 0 } },
-        { id: '白一护', name: 'White Ichigo', sub: 'Bạch Nguyệt', icon: '⚪', pos: { row: 0, col: 0 } },
-        { id: '牛头白一护', name: 'Vasto Lorde', sub: 'Hư Vương', icon: '👹', pos: { row: 0, col: 0 } },
-        { id: '露其雅', name: 'Rukia Kuchiki', sub: 'Tuyết Hoa', icon: '❄️', pos: { row: 4, col: 3 } },
-        { id: '露其雅始解', name: 'Rukia Shikai', sub: 'Băng Vũ', icon: '🌨️', pos: { row: 3, col: 3 } },
-        { id: '日番谷', name: 'Hitsugaya Toshiro', sub: 'Đội Trưởng 10', icon: '🧊', pos: { row: 4, col: 1 } },
-        { id: '日番谷万解', name: 'Hitsugaya Bankai', sub: 'Đại Hồng Liên', icon: '🐉', pos: { row: 3, col: 1 } },
-        { id: '白哉', name: 'Byakuya Kuchiki', sub: 'Thiên Bản Anh', icon: '🌸', pos: { row: 4, col: 0 } },
-        { id: '恋次', name: 'Renji Abarai', sub: 'Xà Vĩ Hoàn', icon: '🐍', pos: { row: 4, col: 2 } },
-        { id: '银', name: 'Gin Ichimaru', sub: 'Thần Thương', icon: '🗡️', pos: { row: 2, col: 1 } },
-        { id: '蓝染', name: 'Aizen Sosuke', sub: 'Kính Hoa Thủy Nguyệt', icon: '👓', pos: { row: 0, col: 1 } },
-        { id: '剑八', name: 'Kenpachi Zaraki', sub: 'Đội 11 Quỷ Kiếm', icon: '⚔️', pos: { row: 2, col: 4 } },
-        { id: '小乌', name: 'Ulquiorra Cifer', sub: 'Espada No.4', icon: '🦇', pos: { row: 2, col: 0 } },
-        { id: '茶渡', name: 'Yasutora Chad', sub: 'Cự Thần Tí', icon: '🥊', pos: { row: 3, col: 0 } },
-        { id: '石田', name: 'Uryu Ishida', sub: 'Diệt Khước Sư', icon: '🏹', pos: { row: 3, col: 2 } },
-        { id: '一角', name: 'Ikkaku Madarame', sub: 'Nhất Giác', icon: '🎋', pos: { row: 2, col: 3 } },
-        { id: '涅茧利', name: 'Mayuri Kurotsuchi', sub: 'Khoa Học Gia', icon: '🧪', pos: { row: 2, col: 2 } }
+        { id: '一护', name: 'Ichigo Kurosaki', sub: 'Thần Chết', icon: '🗡️', avatar: 'assets/avatars/ichigo.png', pos: { row: 4, col: 4 } },
+        { id: '一护万解', name: 'Ichigo Bankai', sub: 'Vạn Giải', icon: '⚡', avatar: 'assets/avatars/ichigo_bankai.png', pos: { row: 3, col: 4 } },
+        { id: '一护虚化', name: 'Ichigo Hollow', sub: 'Mặt Nạ Hư', icon: '🎭', avatar: 'assets/avatars/ichigo_hollow.png', pos: { row: 0, col: 0 } },
+        { id: '白一护', name: 'White Ichigo', sub: 'Bạch Nguyệt', icon: '⚪', avatar: 'assets/avatars/ichigo_hollow.png', pos: { row: 0, col: 0 } },
+        { id: '牛头白一护', name: 'Vasto Lorde', sub: 'Hư Vương', icon: '👹', avatar: 'assets/avatars/assist_vasto.png', pos: { row: 0, col: 0 } },
+        { id: '露其雅', name: 'Rukia Kuchiki', sub: 'Tuyết Hoa', icon: '❄️', avatar: 'assets/avatars/rukia.png', pos: { row: 4, col: 3 } },
+        { id: '露其雅始解', name: 'Rukia Shikai', sub: 'Băng Vũ', icon: '🌨️', avatar: 'assets/avatars/rukia_shikai.png', pos: { row: 3, col: 3 } },
+        { id: '日番谷', name: 'Hitsugaya Toshiro', sub: 'Đội Trưởng 10', icon: '🧊', avatar: 'assets/avatars/hitsugaya.png', pos: { row: 4, col: 1 } },
+        { id: '日番谷万解', name: 'Hitsugaya Bankai', sub: 'Đại Hồng Liên', icon: '🐉', avatar: 'assets/avatars/hitsugaya_bankai.png', pos: { row: 3, col: 1 } },
+        { id: '白哉', name: 'Byakuya Kuchiki', sub: 'Thiên Bản Anh', icon: '🌸', avatar: 'assets/avatars/byakuya.png', pos: { row: 4, col: 0 } },
+        { id: '恋次', name: 'Renji Abarai', sub: 'Xà Vĩ Hoàn', icon: '🐍', avatar: 'assets/avatars/renji.png', pos: { row: 4, col: 2 } },
+        { id: '银', name: 'Gin Ichimaru', sub: 'Thần Thương', icon: '🗡️', avatar: 'assets/avatars/gin.png', pos: { row: 2, col: 1 } },
+        { id: '蓝染', name: 'Aizen Sosuke', sub: 'Kính Hoa Thủy Nguyệt', icon: '👓', avatar: 'assets/avatars/aizen.png', pos: { row: 0, col: 1 } },
+        { id: '剑八', name: 'Kenpachi Zaraki', sub: 'Đội 11 Quỷ Kiếm', icon: '⚔️', avatar: 'assets/avatars/kenpachi.png', pos: { row: 2, col: 4 } },
+        { id: '小乌', name: 'Ulquiorra Cifer', sub: 'Espada No.4', icon: '🦇', avatar: 'assets/avatars/ulquiorra.png', pos: { row: 2, col: 0 } },
+        { id: '茶渡', name: 'Yasutora Chad', sub: 'Cự Thần Tí', icon: '🥊', avatar: 'assets/avatars/chad.png', pos: { row: 3, col: 0 } },
+        { id: '石田', name: 'Uryu Ishida', sub: 'Diệt Khước Sư', icon: '🏹', avatar: 'assets/avatars/ishida.png', pos: { row: 3, col: 2 } },
+        { id: '一角', name: 'Ikkaku Madarame', sub: 'Nhất Giác', icon: '🎋', avatar: 'assets/avatars/ikkaku.png', pos: { row: 2, col: 3 } },
+        { id: '涅茧利', name: 'Mayuri Kurotsuchi', sub: 'Khoa Học Gia', icon: '🧪', avatar: 'assets/avatars/mayuri.png', pos: { row: 2, col: 2 } }
     ],
     naruto: [
-        { id: '鸣人', name: 'Naruto Uzumaki', sub: 'Hokage 7', icon: '🍥', pos: { row: 4, col: 5 } },
-        { id: '鸣人九尾', name: 'Naruto 1 Vĩ', sub: 'Áo Vĩ Thú', icon: '🦊', pos: { row: 3, col: 5 } },
-        { id: '仙鸣', name: 'Naruto Tiên Nhân', sub: 'Hiền Nhân Cóc', icon: '🐸', pos: { row: 3, col: 6 } },
-        { id: '鸣人九尾实体', name: 'Naruto 4 Vĩ', sub: 'Hắc Vĩ Cuồng', icon: '💥', pos: { row: 3, col: 5 } },
-        { id: '黄金鸣人', name: 'Golden Naruto', sub: 'Chakra Cửu Vĩ', icon: '✨', pos: { row: 3, col: 6 } },
-        { id: '佐助', name: 'Sasuke Uchiha', sub: 'Chidori Lôi', icon: '⚡', pos: { row: 4, col: 7 } },
-        { id: '佐助咒怨', name: 'Sasuke Chú Ấn', sub: 'Nguyền Ấn', icon: '🦅', pos: { row: 3, col: 8 } },
-        { id: '佐助须佐', name: 'Sasuke Susanoo', sub: 'Vạn Hoa Đồng', icon: '👁️', pos: { row: 0, col: 9 } },
-        { id: '卡卡西', name: 'Kakashi Hatake', sub: 'Sharingan', icon: '📖', pos: { row: 4, col: 8 } },
-        { id: '樱', name: 'Sakura Haruno', sub: 'Bách Hào Ấn', icon: '🌸', pos: { row: 4, col: 6 } },
-        { id: '小李', name: 'Rock Lee', sub: 'Bát Môn', icon: '🥋', pos: { row: 4, col: 9 } },
-        { id: '我爱罗', name: 'Gaara', sub: 'Kazekage Cát', icon: '🏺', pos: { row: 2, col: 6 } },
-        { id: '宁次', name: 'Neji Hyuga', sub: 'Bát Quái Chưởng', icon: '☯️', pos: { row: 3, col: 7 } },
-        { id: '自来也', name: 'Jiraiya', sub: 'Hao Kiệt Cóc', icon: '📜', pos: { row: 1, col: 8 } },
-        { id: '鼬', name: 'Itachi Uchiha', sub: 'Tsukuyomi', icon: '🐦', pos: { row: 3, col: 9 } },
-        { id: '佩恩', name: 'Pain Lục Đạo', sub: 'Thần La Thiên Chinh', icon: '🪐', pos: { row: 2, col: 7 } },
-        { id: '小南', name: 'Konan', sub: 'Thiên Sứ Giấy', icon: '🕊️', pos: { row: 2, col: 8 } },
-        { id: '斑', name: 'Madara Uchiha', sub: 'Chiến Thần', icon: '🔥', pos: { row: 0, col: 7 } },
-        { id: '带土', name: 'Obito / Tobi', sub: 'Kamui', icon: '🎭', pos: { row: 0, col: 6 } },
-        { id: '四代', name: 'Minato Namikaze', sub: 'Tia Chớp Vàng', icon: '⚡', pos: { row: 0, col: 8 } },
-        { id: '大蛇丸', name: 'Orochimaru', sub: 'Bạch Xà Tam Nin', icon: '🐍', pos: { row: 2, col: 9 } },
-        { id: '迪达拉', name: 'Deidara', sub: 'Nổ Tung', icon: '💣', pos: { row: 2, col: 5 } },
-        { id: '重吾', name: 'Jugo', sub: 'Nguyền Ấn', icon: '💪', pos: { row: 1, col: 5 } },
-        { id: '香磷', name: 'Karin', sub: 'Cảm Tri', icon: '👓', pos: { row: 1, col: 6 } },
-        { id: '奇拉比', name: 'Killer Bee', sub: 'Bát Vĩ', icon: '🐙', pos: { row: 1, col: 7 } }
+        { id: '鸣人', name: 'Naruto Uzumaki', sub: 'Hokage 7', icon: '🍥', avatar: 'assets/avatars/naruto.png', pos: { row: 4, col: 5 } },
+        { id: '鸣人九尾', name: 'Naruto 1 Vĩ', sub: 'Áo Vĩ Thú', icon: '🦊', avatar: 'assets/avatars/naruto_1tail.png', pos: { row: 3, col: 5 } },
+        { id: '仙鸣', name: 'Naruto Tiên Nhân', sub: 'Hiền Nhân Cóc', icon: '🐸', avatar: 'assets/avatars/naruto_sage.png', pos: { row: 3, col: 6 } },
+        { id: '鸣人九尾实体', name: 'Naruto 4 Vĩ', sub: 'Hắc Vĩ Cuồng', icon: '💥', avatar: 'assets/avatars/naruto_1tail.png', pos: { row: 3, col: 5 } },
+        { id: '黄金鸣人', name: 'Golden Naruto', sub: 'Chakra Cửu Vĩ', icon: '✨', avatar: 'assets/avatars/naruto_sage.png', pos: { row: 3, col: 6 } },
+        { id: '佐助', name: 'Sasuke Uchiha', sub: 'Chidori Lôi', icon: '⚡', avatar: 'assets/avatars/sasuke.png', pos: { row: 4, col: 7 } },
+        { id: '佐助咒怨', name: 'Sasuke Chú Ấn', sub: 'Nguyền Ấn', icon: '🦅', avatar: 'assets/avatars/sasuke_curse.png', pos: { row: 3, col: 8 } },
+        { id: '佐助须佐', name: 'Sasuke Susanoo', sub: 'Vạn Hoa Đồng', icon: '👁️', avatar: 'assets/avatars/sasuke_susanoo.png', pos: { row: 0, col: 9 } },
+        { id: '卡卡西', name: 'Kakashi Hatake', sub: 'Sharingan', icon: '📖', avatar: 'assets/avatars/kakashi.png', pos: { row: 4, col: 8 } },
+        { id: '樱', name: 'Sakura Haruno', sub: 'Bách Hào Ấn', icon: '🌸', avatar: 'assets/avatars/sakura.png', pos: { row: 4, col: 6 } },
+        { id: '小李', name: 'Rock Lee', sub: 'Bát Môn', icon: '🥋', avatar: 'assets/avatars/lee.png', pos: { row: 4, col: 9 } },
+        { id: '我爱罗', name: 'Gaara', sub: 'Kazekage Cát', icon: '🏺', avatar: 'assets/avatars/gaara.png', pos: { row: 2, col: 6 } },
+        { id: '宁次', name: 'Neji Hyuga', sub: 'Bát Quái Chưởng', icon: '☯️', avatar: 'assets/avatars/neji.png', pos: { row: 3, col: 7 } },
+        { id: '自来也', name: 'Jiraiya', sub: 'Hao Kiệt Cóc', icon: '📜', avatar: 'assets/avatars/jiraiya.png', pos: { row: 1, col: 8 } },
+        { id: '鼬', name: 'Itachi Uchiha', sub: 'Tsukuyomi', icon: '🐦', avatar: 'assets/avatars/itachi.png', pos: { row: 3, col: 9 } },
+        { id: '佩恩', name: 'Pain Lục Đạo', sub: 'Thần La Thiên Chinh', icon: '🪐', avatar: 'assets/avatars/pain.png', pos: { row: 2, col: 7 } },
+        { id: '小南', name: 'Konan', sub: 'Thiên Sứ Giấy', icon: '🕊️', avatar: 'assets/avatars/konan.png', pos: { row: 2, col: 8 } },
+        { id: '斑', name: 'Madara Uchiha', sub: 'Chiến Thần', icon: '🔥', avatar: 'assets/avatars/madara.png', pos: { row: 0, col: 7 } },
+        { id: '带土', name: 'Obito / Tobi', sub: 'Kamui', icon: '🎭', avatar: 'assets/avatars/obito.png', pos: { row: 0, col: 6 } },
+        { id: '四代', name: 'Minato Namikaze', sub: 'Tia Chớp Vàng', icon: '⚡', avatar: 'assets/avatars/minato.png', pos: { row: 0, col: 8 } },
+        { id: '大蛇丸', name: 'Orochimaru', sub: 'Bạch Xà Tam Nin', icon: '🐍', avatar: 'assets/avatars/orochimaru.png', pos: { row: 2, col: 9 } },
+        { id: '迪达拉', name: 'Deidara', sub: 'Nổ Tung', icon: '💣', avatar: 'assets/avatars/deidara.png', pos: { row: 2, col: 5 } },
+        { id: '重吾', name: 'Jugo', sub: 'Nguyền Ấn', icon: '💪', avatar: 'assets/avatars/jugo.png', pos: { row: 1, col: 5 } },
+        { id: '香磷', name: 'Karin', sub: 'Cảm Tri', icon: '👓', avatar: 'assets/avatars/karin.png', pos: { row: 1, col: 6 } },
+        { id: '奇拉比', name: 'Killer Bee', sub: 'Bát Vĩ', icon: '🐙', avatar: 'assets/avatars/killerbee.png', pos: { row: 1, col: 7 } }
     ],
     guest: [
         { id: '剑心', name: 'Himura Kenshin', sub: 'Phi Thiên Ngự Kiếm', icon: '🗡️', pos: { row: 4, col: 4 } }
     ],
     assist: [
-        { id: '夜一', name: 'Yoruichi (Trợ thủ)', sub: 'Thuấn Thần Lôi Điện', icon: '⚡', pos: { row: 2, col: 2 } },
-        { id: '我爱罗', name: 'Gaara (Trợ thủ)', sub: 'Khiên Sa Bảo Vệ', icon: '🏺', pos: { row: 2, col: 5 } },
-        { id: '魂', name: 'Kon (Trợ thủ)', sub: 'Thú Bông Cản Đòn', icon: '🦁', pos: { row: 2, col: 4 } },
-        { id: '织姬', name: 'Orihime (Trợ thủ)', sub: 'Thuẫn Hồi Sinh', icon: '🛡️', pos: { row: 2, col: 3 } },
-        { id: '石田', name: 'Ishida (Trợ thủ)', sub: 'Mưa Tên Khí Công', icon: '🏹', pos: { row: 2, col: 1 } },
-        { id: '手鞠', name: 'Temari (Trợ thủ)', sub: 'Cuồng Phong Quạt', icon: '🌪️', pos: { row: 2, col: 6 } },
-        { id: '天天', name: 'Tenten (Trợ thủ)', sub: 'Bách Khí Liêm Đao', icon: '🗡️', pos: { row: 2, col: 8 } },
-        { id: '剑八', name: 'Kenpachi (Trợ thủ)', sub: 'Xung Kích Toàn Lực', icon: '⚔️', pos: { row: 2, col: 0 } },
-        { id: '松本', name: 'Matsumoto / Ino (Trợ thủ)', sub: 'Tro Tàn Phủ Kín', icon: '🌫️', pos: { row: 2, col: 7 } },
-        { id: '纲手', name: 'Tsunade (Trợ thủ)', sub: 'Cấp Cứu Trị Liệu', icon: '💚', pos: { row: 1, col: 6 } },
-        { id: '四代', name: 'Minato (Trợ thủ)', sub: 'Phi Lôi Thần Trảm', icon: '⚡', pos: { row: 1, col: 8 } },
-        { id: '土影', name: 'Ohnoki (Trợ thủ)', sub: 'Trần Độn Nguyên Tử', icon: '🪨', pos: { row: 1, col: 7 } },
-        { id: '雏田', name: 'Hinata (Trợ thủ)', sub: 'Bảo Hộ Nhu Quyền', icon: '💜', pos: { row: 1, col: 5 } },
-        { id: '八千流', name: 'Yachiru (Trợ thủ)', sub: 'Kẹo Ngọt Cổ Động', icon: '🍬', pos: { row: 1, col: 3 } },
-        { id: '碎蜂', name: 'Soi Fon (Trợ thủ)', sub: 'Tước Phong Ảnh', icon: '🐝', pos: { row: 1, col: 2 } },
-        { id: '水月', name: 'Suigetsu (Trợ thủ)', sub: 'Thủy Đạn Trảm', icon: '💧', pos: { row: 0, col: 5 } },
-        { id: '涅音梦', name: 'Nemu (Trợ thủ)', sub: 'Dược Liệu Hồi Phục', icon: '💉', pos: { row: 0, col: 3 } },
-        { id: '佐井', name: 'Sai (Trợ thủ)', sub: 'Siêu Thú Ngụy Họa', icon: '🖌️', pos: { row: 0, col: 6 } },
-        { id: '蒂雅', name: 'Harribel (Trợ thủ)', sub: 'Thương Hải Triều', icon: '🦈', pos: { row: 0, col: 4 } },
-        { id: '葛力姆乔', name: 'Grimmjow (Trợ thủ)', sub: 'Vương Hư Thiểm', icon: '🐾', pos: { row: 1, col: 0 } },
-        { id: '牛头白一护', name: 'Vasto Lorde (Trợ thủ)', sub: 'Hư Thiểm Hủy Diệt', icon: '👹', pos: { row: 1, col: 4 } },
-        { id: '史塔克', name: 'Coyote Starrk (Trợ thủ)', sub: 'Cero Metralleta', icon: '🐺', pos: { row: 1, col: 1 } },
-        { id: '自来也', name: 'Jiraiya (Trợ thủ)', sub: 'Châm Địa Ngục', icon: '🐸', pos: { row: 1, col: 9 } },
-        { id: '志志雄', name: 'Shishio (Trợ thủ)', sub: 'Hỏa Kiếm Vô Hạn', icon: '🔥', pos: { row: 0, col: 9 } }
+        { id: '夜一', name: 'Yoruichi (Trợ thủ)', sub: 'Thuấn Thần Lôi Điện', icon: '⚡', avatar: 'assets/avatars/assist_yoruichi.png', pos: { row: 2, col: 2 } },
+        { id: '我爱罗', name: 'Gaara (Trợ thủ)', sub: 'Khiên Sa Bảo Vệ', icon: '🏺', avatar: 'assets/avatars/assist_gaara.png', pos: { row: 2, col: 5 } },
+        { id: '魂', name: 'Kon (Trợ thủ)', sub: 'Thú Bông Cản Đòn', icon: '🦁', avatar: 'assets/avatars/assist_kon.png', pos: { row: 2, col: 4 } },
+        { id: '织姬', name: 'Orihime (Trợ thủ)', sub: 'Thuẫn Hồi Sinh', icon: '🛡️', avatar: 'assets/avatars/assist_orihime.png', pos: { row: 2, col: 3 } },
+        { id: '石田', name: 'Ishida (Trợ thủ)', sub: 'Mưa Tên Khí Công', icon: '🏹', avatar: 'assets/avatars/assist_ishida.png', pos: { row: 2, col: 1 } },
+        { id: '手鞠', name: 'Temari (Trợ thủ)', sub: 'Cuồng Phong Quạt', icon: '🌪️', avatar: 'assets/avatars/assist_temari.png', pos: { row: 2, col: 6 } },
+        { id: '天天', name: 'Tenten (Trợ thủ)', sub: 'Bách Khí Liêm Đao', icon: '🗡️', avatar: 'assets/avatars/assist_tenten.png', pos: { row: 2, col: 8 } },
+        { id: '剑八', name: 'Kenpachi (Trợ thủ)', sub: 'Xung Kích Toàn Lực', icon: '⚔️', avatar: 'assets/avatars/assist_kenpachi.png', pos: { row: 2, col: 0 } },
+        { id: '松本', name: 'Matsumoto / Ino (Trợ thủ)', sub: 'Tro Tàn Phủ Kín', icon: '🌫️', avatar: 'assets/avatars/assist_matsumoto.png', pos: { row: 2, col: 7 } },
+        { id: '纲手', name: 'Tsunade (Trợ thủ)', sub: 'Cấp Cứu Trị Liệu', icon: '💚', avatar: 'assets/avatars/assist_tsunade.png', pos: { row: 1, col: 6 } },
+        { id: '四代', name: 'Minato (Trợ thủ)', sub: 'Phi Lôi Thần Trảm', icon: '⚡', avatar: 'assets/avatars/assist_minato.png', pos: { row: 1, col: 8 } },
+        { id: '土影', name: 'Ohnoki (Trợ thủ)', sub: 'Trần Độn Nguyên Tử', icon: '🪨', avatar: 'assets/avatars/assist_ohnoki.png', pos: { row: 1, col: 7 } },
+        { id: '雏田', name: 'Hinata (Trợ thủ)', sub: 'Bảo Hộ Nhu Quyền', icon: '💜', avatar: 'assets/avatars/assist_hinata.png', pos: { row: 1, col: 5 } },
+        { id: '八千流', name: 'Yachiru (Trợ thủ)', sub: 'Kẹo Ngọt Cổ Động', icon: '🍬', avatar: 'assets/avatars/assist_yachiru.png', pos: { row: 1, col: 3 } },
+        { id: '碎蜂', name: 'Soi Fon (Trợ thủ)', sub: 'Tước Phong Ảnh', icon: '🐝', avatar: 'assets/avatars/assist_soifon.png', pos: { row: 1, col: 2 } },
+        { id: '水月', name: 'Suigetsu (Trợ thủ)', sub: 'Thủy Đạn Trảm', icon: '💧', avatar: 'assets/avatars/assist_suigetsu.png', pos: { row: 0, col: 5 } },
+        { id: '涅音梦', name: 'Nemu (Trợ thủ)', sub: 'Dược Liệu Hồi Phục', icon: '💉', avatar: 'assets/avatars/assist_nemu.png', pos: { row: 0, col: 3 } },
+        { id: '佐井', name: 'Sai (Trợ thủ)', sub: 'Siêu Thú Ngụy Họa', icon: '🖌️', avatar: 'assets/avatars/assist_sai.png', pos: { row: 0, col: 6 } },
+        { id: '蒂雅', name: 'Harribel (Trợ thủ)', sub: 'Thương Hải Triều', icon: '🦈', avatar: 'assets/avatars/assist_harribel.png', pos: { row: 0, col: 4 } },
+        { id: '葛力姆乔', name: 'Grimmjow (Trợ thủ)', sub: 'Vương Hư Thiểm', icon: '🐾', avatar: 'assets/avatars/assist_grimmjow.png', pos: { row: 1, col: 0 } },
+        { id: '牛头白一护', name: 'Vasto Lorde (Trợ thủ)', sub: 'Hư Thiểm Hủy Diệt', icon: '👹', avatar: 'assets/avatars/assist_vasto.png', pos: { row: 1, col: 4 } },
+        { id: '史塔克', name: 'Coyote Starrk (Trợ thủ)', sub: 'Cero Metralleta', icon: '🐺', avatar: 'assets/avatars/assist_starrk.png', pos: { row: 1, col: 1 } },
+        { id: '自来也', name: 'Jiraiya (Trợ thủ)', sub: 'Châm Địa Ngục', icon: '🐸', avatar: 'assets/avatars/assist_jiraiya.png', pos: { row: 1, col: 9 } },
+        { id: '志志雄', name: 'Shishio (Trợ thủ)', sub: 'Hỏa Kiếm Vô Hạn', icon: '🔥', avatar: 'assets/avatars/assist_shishio.png', pos: { row: 0, col: 9 } }
     ],
     stages: [
         { id: '火影瀑布', name: 'Thác Thung Lũng Tận Cùng (火影瀑布)' },
@@ -4056,15 +4056,15 @@ function updateBpUi() {
 
     // Cập nhật P1 Card
     const p1Fighter = findRosterItem(bpState.p1.fighter);
-    const p1Assist = findRosterItem(bpState.p1.assist);
+    const p1Assist = (typeof findAssistItem === 'function') ? findAssistItem(bpState.p1.assist) : findRosterItem(bpState.p1.assist);
     const p1Avatar = document.getElementById('bpP1Avatar');
     const p1Name = document.getElementById('bpP1Name');
     const p1AssistLabel = document.getElementById('bpP1AssistLabel');
     const p1Status = document.getElementById('bpP1Status');
 
-    if (p1Avatar) p1Avatar.innerText = p1Fighter.icon || '🗡️';
+    if (p1Avatar) p1Avatar.innerHTML = renderBpAvatarHtml(p1Fighter, '🗡️');
     if (p1Name) p1Name.innerText = p1Fighter.name;
-    if (bpP1AssistAvatar) bpP1AssistAvatar.innerText = p1Assist.icon || '⚡';
+    if (bpP1AssistAvatar) bpP1AssistAvatar.innerHTML = renderBpAvatarHtml(p1Assist, '⚡');
     if (p1AssistLabel) p1AssistLabel.innerText = p1Assist.name;
 
     // Highlight slot đang chọn của P1
@@ -4094,15 +4094,15 @@ function updateBpUi() {
 
     // Cập nhật P2 Card
     const p2Fighter = findRosterItem(bpState.p2.fighter);
-    const p2Assist = findRosterItem(bpState.p2.assist);
+    const p2Assist = (typeof findAssistItem === 'function') ? findAssistItem(bpState.p2.assist) : findRosterItem(bpState.p2.assist);
     const p2Avatar = document.getElementById('bpP2Avatar');
     const p2Name = document.getElementById('bpP2Name');
     const p2AssistLabel = document.getElementById('bpP2AssistLabel');
     const p2Status = document.getElementById('bpP2Status');
 
-    if (p2Avatar) p2Avatar.innerText = p2Fighter.icon || '🦊';
+    if (p2Avatar) p2Avatar.innerHTML = renderBpAvatarHtml(p2Fighter, '🦊');
     if (p2Name) p2Name.innerText = p2Fighter.name;
-    if (bpP2AssistAvatar) bpP2AssistAvatar.innerText = p2Assist.icon || '🏺';
+    if (bpP2AssistAvatar) bpP2AssistAvatar.innerHTML = renderBpAvatarHtml(p2Assist, '🏺');
     if (p2AssistLabel) p2AssistLabel.innerText = p2Assist.name;
 
     // Highlight slot đang chọn của P2
@@ -4175,6 +4175,15 @@ function updateBpUi() {
     renderBanPickGrid();
 }
 
+function renderBpAvatarHtml(item, fallbackIcon = '👤') {
+    const icon = (item && item.icon) || fallbackIcon;
+    if (item && item.avatar) {
+        const safeAlt = String(item.name || '').replace(/"/g, '&quot;');
+        return `<img class="bp-avatar-img" src="${item.avatar}" alt="${safeAlt}" onerror="this.replaceWith(document.createTextNode('${icon}'))">`;
+    }
+    return icon;
+}
+
 function renderBanPickGrid() {
     if (!bpGridContainer) return;
     bpGridContainer.innerHTML = '';
@@ -4204,7 +4213,7 @@ function renderBanPickGrid() {
         if (isSelectedP2) card.classList.add('selected-p2');
 
         card.innerHTML = `
-            <div class="bp-item-icon">${item.icon || '👤'}</div>
+            <div class="bp-item-icon">${renderBpAvatarHtml(item, '👤')}</div>
             <div class="bp-item-name" title="${item.name}">${item.name}</div>
             <div class="bp-item-sub">${item.sub}</div>
         `;
