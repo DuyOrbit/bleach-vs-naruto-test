@@ -32,6 +32,103 @@ app.use((req, res, next) => {
     next();
 });
 
+app.use(express.json());
+
+// ==========================================
+// VERCEL / SERVERLESS SIGNALING ENDPOINTS (HONG KONG / SINGAPORE - 15ms PING)
+// Loại bỏ hoàn toàn máy chủ Mỹ (Render), người chơi tại Việt Nam kết nối siêu tốc
+// ==========================================
+const httpRooms = new Map();
+
+// Tự động dọn phòng HTTP sau 30 phút
+setInterval(() => {
+    const now = Date.now();
+    for (const [id, r] of httpRooms.entries()) {
+        if (now - (r.lastActive || 0) > 30 * 60 * 1000) {
+            httpRooms.delete(id);
+        }
+    }
+}, 60000);
+
+app.post('/api/room/create', (req, res) => {
+    const { roomId, offer } = req.body || {};
+    if (!roomId) return res.status(400).json({ error: 'Missing roomId' });
+    let room = httpRooms.get(roomId);
+    if (!room) {
+        room = {
+            roomId,
+            createdAt: Date.now(),
+            lastActive: Date.now(),
+            offer: offer || null,
+            answer: null,
+            hostCandidates: [],
+            guestCandidates: [],
+            status: 'waiting'
+        };
+        httpRooms.set(roomId, room);
+    } else {
+        room.lastActive = Date.now();
+        if (offer) room.offer = offer;
+    }
+    res.json({ ok: true, roomId });
+});
+
+app.post('/api/room/join', (req, res) => {
+    const { roomId } = req.body || {};
+    const room = httpRooms.get(roomId);
+    if (!room) return res.status(404).json({ error: 'Phòng không tồn tại hoặc đã hết hạn!' });
+    room.lastActive = Date.now();
+    room.status = 'matched';
+    res.json({ ok: true, roomId, offer: room.offer });
+});
+
+app.post('/api/room/signal', (req, res) => {
+    const { roomId, role, offer, answer } = req.body || {};
+    const room = httpRooms.get(roomId);
+    if (!room) return res.status(404).json({ error: 'Phòng không tồn tại!' });
+    room.lastActive = Date.now();
+    if (offer) room.offer = offer;
+    if (answer) room.answer = answer;
+    res.json({ ok: true });
+});
+
+app.post('/api/room/answer', (req, res) => {
+    const { roomId, answer } = req.body || {};
+    const room = httpRooms.get(roomId);
+    if (!room) return res.status(404).json({ error: 'Phòng không tồn tại!' });
+    room.lastActive = Date.now();
+    room.answer = answer;
+    res.json({ ok: true });
+});
+
+app.post('/api/room/candidate', (req, res) => {
+    const { roomId, role, candidate } = req.body || {};
+    const room = httpRooms.get(roomId);
+    if (!room) return res.status(404).json({ error: 'Phòng không tồn tại!' });
+    room.lastActive = Date.now();
+    if (candidate) {
+        if (role === 'host') room.hostCandidates.push(candidate);
+        else room.guestCandidates.push(candidate);
+    }
+    res.json({ ok: true });
+});
+
+app.get('/api/room/poll', (req, res) => {
+    const { roomId, role } = req.query;
+    const room = httpRooms.get(roomId);
+    if (!room) return res.status(404).json({ error: 'Phòng không tồn tại!' });
+    room.lastActive = Date.now();
+    if (role === 'host') {
+        const candidates = room.guestCandidates;
+        room.guestCandidates = [];
+        res.json({ answer: room.answer, candidates, status: room.status });
+    } else {
+        const candidates = room.hostCandidates;
+        room.hostCandidates = [];
+        res.json({ offer: room.offer, candidates, status: room.status });
+    }
+});
+
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 const PORT = process.env.PORT || 3000;
@@ -252,6 +349,10 @@ function gracefulShutdown(signal) {
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
-server.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server Bleach vs Naruto Online (HTTP + WebSocket) đang chạy trên cổng: ${PORT}`);
-});
+module.exports = app;
+
+if (!process.env.VERCEL) {
+    server.listen(PORT, '0.0.0.0', () => {
+        console.log(`Server Bleach vs Naruto Online (HTTP + WebSocket) đang chạy trên cổng: ${PORT}`);
+    });
+}

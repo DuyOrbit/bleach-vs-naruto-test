@@ -6,6 +6,10 @@
       "includeFiles": "{style.css,main.js,game.swf,ruffle/**,music/**,fighter/**}"
     }
   },
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/server.js" },
+    { "source": "/healthz", "destination": "/server.js" }
+  ],
   "headers": [
     {
       "source": "/(.*)",

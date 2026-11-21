@@ -35,22 +35,16 @@
 // CẤU HÌNH WEBRTC & ICE SERVERS (STUN / TURN RELAY)
 // ==========================================
 const DEFAULT_STUN_SERVERS = [
-    // Cloudflare STUN có máy chủ đặt tại Việt Nam (Hà Nội & TP.HCM), ping cực thấp
+    // 1. Cloudflare Anycast STUN - Máy chủ đặt ngay tại Việt Nam (Hà Nội & TP.HCM), ping < 5ms
     { urls: 'stun:stun.cloudflare.com:3478' },
+    // 2. Google STUN khu vực Châu Á (Hong Kong / Singapore / Tokyo), ping 15-25ms
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
     { urls: 'stun:stun2.l.google.com:19302' },
-    { urls: 'stun:global.stun.twilio.com:3478' },
-    // Cụm TURN Relay Server xuyên tường lửa / NAT (Chuẩn Animugen Open Relay)
-    {
-        urls: [
-            'turn:openrelay.metered.ca:80',
-            'turn:openrelay.metered.ca:443',
-            'turn:openrelay.metered.ca:443?transport=tcp'
-        ],
-        username: 'openrelayproject',
-        credential: 'openrelayproject'
-    }
+    { urls: 'stun:stun3.l.google.com:19302' },
+    { urls: 'stun:stun4.l.google.com:19302' },
+    // 3. Twilio STUN Global Anycast
+    { urls: 'stun:global.stun.twilio.com:3478' }
 ];
 
 function getIceServers() {
@@ -462,6 +456,12 @@ let currentNetcodeMode = localStorage.getItem('bvn_netcode_mode') || 'stream'; /
 let rufflePlayer = null;
 let ruffleCanvas = null;
 let pingInterval = null;
+
+// Cấu hình Vercel Serverless Signaling (Hong Kong / Singapore Node - 15ms Ping - Direct P2P)
+const isVercelHost = window.location.host.includes('vercel.app') || window.location.hostname.includes('vercel.app') || window.BVN_USE_HTTP_SIGNALING === true;
+let currentHttpRoomId = null;
+let httpPollInterval = null;
+let hasTriggeredPeerConnected = false;
 
 // DOM Elements
 const gameEditionSelect = document.getElementById('gameEditionSelect');
@@ -913,11 +913,14 @@ let symmetricDelayEnabled = true;
 
 function getSymmetricDelayMs() {
     if (!symmetricDelayEnabled || myRole !== 'host' || !peerConnection) return 0;
+    // QUAN TRỌNG: Ở chế độ Remote Play (Stream Video), Host là máy chủ nguồn phát sóng!
+    // Phím của Host PHẢI chạy 0ms Native tức thì, KHÔNG ĐƯỢC hoãn phím!
+    if (currentNetcodeMode !== 'input_sync') return 0;
+
     const ping = parseInt(pingVal?.innerText, 10) || 0;
-    if (ping <= 10) return 0;
-    // Công thức cân bằng trễ Animugen lockstep:
-    // delayFrames = Math.max(1, Math.min(5, Math.ceil(ping / 2 / 16.67)))
-    const delayFrames = Math.max(1, Math.min(5, Math.ceil((ping / 2) / 16.67)));
+    if (ping <= 15) return 0;
+    // Chỉ trong chế độ P2P Input Sync nếu ping cao mới bù trễ tối đa 2 frame (~33ms):
+    const delayFrames = Math.max(1, Math.min(2, Math.ceil((ping / 2) / 16.67)));
     return delayFrames * 16.67;
 }
 
@@ -1076,22 +1079,38 @@ async function setupHostWebRtc() {
 
     peerConnection.onicecandidate = (event) => {
         if (event.candidate) {
-            sendNetworkMessage({
-                type: 'webrtc_candidate',
-                candidate: event.candidate
-            });
+            if (isVercelHost && currentHttpRoomId) {
+                fetch('/api/room/candidate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ roomId: currentHttpRoomId, role: 'host', candidate: event.candidate })
+                }).catch(() => {});
+            } else {
+                sendNetworkMessage({
+                    type: 'webrtc_candidate',
+                    candidate: event.candidate
+                });
+            }
         }
     };
 
     peerConnection.onconnectionstatechange = () => {
         console.log("Host PeerConnection state:", peerConnection.connectionState);
         if (peerConnection.connectionState === 'connected') {
+            if (httpPollInterval) {
+                clearInterval(httpPollInterval);
+                httpPollInterval = null;
+            }
+            if (isVercelHost && !hasTriggeredPeerConnected) {
+                hasTriggeredPeerConnected = true;
+                handleNetworkMessage({ type: 'peer_connected', role: 'host' });
+            }
             if (currentNetcodeMode === 'stream') {
                 const preset = STREAM_QUALITY_PRESETS[currentStreamQuality] || STREAM_QUALITY_PRESETS.smooth;
-                showSyncNotification(`🟢 Đã kết nối P2P 30FPS mượt mà (${preset.label}) cho Khách!`);
+                showSyncNotification(`🟢 Đã kết nối P2P Trực Tiếp 30FPS (${preset.label}) cho Khách!`);
                 if (videoSender) tuneVideoSenderForLowLatency(videoSender);
             } else {
-                showSyncNotification("⚡ Đã kết nối P2P Input Sync (0 MB Video)! Hai máy đồng bộ 60FPS không tốn mạng.");
+                showSyncNotification("⚡ Đã kết nối P2P Input Sync Trực Tiếp (0 MB Video)! Hai máy đồng bộ 60FPS không trễ.");
             }
         }
     };
@@ -1104,10 +1123,18 @@ async function setupHostWebRtc() {
         const offer = await peerConnection.createOffer();
         const boostedSdp = (currentNetcodeMode === 'stream') ? boostSdpBitrate(offer.sdp) : offer.sdp;
         await peerConnection.setLocalDescription({ type: 'offer', sdp: boostedSdp });
-        sendNetworkMessage({
-            type: 'webrtc_offer',
-            sdp: boostedSdp
-        });
+        if (isVercelHost && currentHttpRoomId) {
+            fetch('/api/room/signal', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ roomId: currentHttpRoomId, role: 'host', offer: boostedSdp })
+            }).catch(() => {});
+        } else {
+            sendNetworkMessage({
+                type: 'webrtc_offer',
+                sdp: boostedSdp
+            });
+        }
         if (videoSender && currentNetcodeMode === 'stream') await tuneVideoSenderForLowLatency(videoSender);
     } catch (e) {
         console.error("Host: Lỗi tạo WebRTC offer:", e);
@@ -1278,21 +1305,37 @@ function setupGuestWebRtc() {
 
     peerConnection.onicecandidate = (event) => {
         if (event.candidate) {
-            sendNetworkMessage({
-                type: 'webrtc_candidate',
-                candidate: event.candidate
-            });
+            if (isVercelHost && currentHttpRoomId) {
+                fetch('/api/room/candidate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ roomId: currentHttpRoomId, role: 'guest', candidate: event.candidate })
+                }).catch(() => {});
+            } else {
+                sendNetworkMessage({
+                    type: 'webrtc_candidate',
+                    candidate: event.candidate
+                });
+            }
         }
     };
 
     peerConnection.onconnectionstatechange = () => {
         console.log("Guest PeerConnection state:", peerConnection.connectionState);
         if (peerConnection.connectionState === 'connected') {
+            if (httpPollInterval) {
+                clearInterval(httpPollInterval);
+                httpPollInterval = null;
+            }
+            if (isVercelHost && !hasTriggeredPeerConnected) {
+                hasTriggeredPeerConnected = true;
+                handleNetworkMessage({ type: 'peer_connected', role: 'guest' });
+            }
             if (currentNetcodeMode === 'stream') {
                 applyLowLatencyReceiverHints(peerConnection);
-                showSyncNotification("🟢 Đã đồng bộ màn hình trận đấu trực tiếp từ Chủ phòng (30FPS HD)!");
+                showSyncNotification("🟢 Đã đồng bộ màn hình P2P Trực Tiếp từ Chủ phòng (30FPS HD)!");
             } else {
-                showSyncNotification("⚡ Đã kết nối P2P Input Sync (0 MB Video)! Sẵn sàng chiến đấu!");
+                showSyncNotification("⚡ Đã kết nối P2P Input Sync Trực Tiếp (0 MB Video)! Sẵn sàng chiến đấu!");
             }
         }
     };
@@ -1335,10 +1378,18 @@ async function handleWebRtcOffer(sdp) {
         const answer = await peerConnection.createAnswer();
         const boostedSdp = boostSdpBitrate(answer.sdp);
         await peerConnection.setLocalDescription({ type: 'answer', sdp: boostedSdp });
-        sendNetworkMessage({
-            type: 'webrtc_answer',
-            sdp: boostedSdp
-        });
+        if (isVercelHost && currentHttpRoomId) {
+            fetch('/api/room/answer', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ roomId: currentHttpRoomId, answer: boostedSdp })
+            }).catch(() => {});
+        } else {
+            sendNetworkMessage({
+                type: 'webrtc_answer',
+                sdp: boostedSdp
+            });
+        }
     } catch (e) {
         console.error("Guest: Lỗi xử lý WebRTC offer:", e);
     }
@@ -1920,7 +1971,9 @@ function handleNetworkMessage(data) {
                 showSyncNotification("🎮 Đã kết nối với Khách! Host bấm S (xuống) chọn 'Vs Human' ➔ bấm Enter để cùng chọn tướng đấu 2 người!");
                 startHostP2Watchdog();
             }
-            setTimeout(setupHostWebRtc, 500);
+            if (!isVercelHost) {
+                setTimeout(setupHostWebRtc, 500);
+            }
         } else {
             if (currentNetcodeMode === 'input_sync') {
                 updateStatus('connected', `⚡ BẠN LÀ P2 (KHÁCH): P2P Input Sync (0 MB Video) cùng Host!`);
@@ -1932,7 +1985,9 @@ function handleNetworkMessage(data) {
                 showSyncNotification("🟢 Đã kết nối với Chủ phòng (30FPS HD)! Bạn đang điều khiển P2. Sẵn sàng!");
                 startGuestStateSender();
             }
-            setupGuestWebRtc();
+            if (!isVercelHost) {
+                setupGuestWebRtc();
+            }
         }
         return;
     }
@@ -2122,12 +2177,142 @@ function handleNetworkMessage(data) {
 // ==========================================
 // 8. TẠO PHÒNG & THAM GIA PHÒNG
 // ==========================================
+async function createRoomHttp(roomId) {
+    currentHttpRoomId = roomId;
+    hasTriggeredPeerConnected = false;
+    updateStatus('waiting', `Đang tạo phòng [${roomId}] trên máy chủ Vercel Hong Kong/Châu Á...`);
+
+    try {
+        const res = await fetch('/api/room/create', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ roomId })
+        });
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.error || 'Lỗi tạo phòng');
+
+        handleNetworkMessage({ type: 'room_created', roomId });
+        await setupHostWebRtc();
+
+        // Bắt đầu poll nhận Answer và ICE Candidates từ Guest
+        if (httpPollInterval) clearInterval(httpPollInterval);
+        httpPollInterval = setInterval(async () => {
+            if (!peerConnection || peerConnection.connectionState === 'connected') {
+                if (peerConnection && peerConnection.connectionState === 'connected') {
+                    clearInterval(httpPollInterval);
+                    httpPollInterval = null;
+                }
+                return;
+            }
+            try {
+                const pollRes = await fetch(`/api/room/poll?roomId=${roomId}&role=host`);
+                if (!pollRes.ok) return;
+                const pollData = await pollRes.json();
+
+                if (pollData.answer && peerConnection.signalingState === 'have-local-offer') {
+                    console.log("[HTTP Signaling] Host nhận Answer từ Guest!");
+                    await peerConnection.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp: pollData.answer }));
+                }
+
+                if (Array.isArray(pollData.candidates) && pollData.candidates.length > 0) {
+                    for (const cand of pollData.candidates) {
+                        try {
+                            await peerConnection.addIceCandidate(new RTCIceCandidate(cand));
+                        } catch (err) {
+                            console.warn("Lỗi add ICE candidate:", err);
+                        }
+                    }
+                }
+            } catch (_) {}
+        }, 400);
+
+    } catch (e) {
+        console.error("Lỗi createRoomHttp:", e);
+        showSyncNotification("⚠️ Không thể tạo phòng: " + e.message, 4000);
+        btnCreateRoom.disabled = false;
+        btnCreateRoom.innerText = "➕ Tạo phòng mới";
+    }
+}
+
+async function joinRoomHttp(roomId) {
+    currentHttpRoomId = roomId;
+    hasTriggeredPeerConnected = false;
+    updateStatus('waiting', `Đang kết nối phòng [${roomId}] qua Vercel Edge...`);
+
+    try {
+        const res = await fetch('/api/room/join', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ roomId })
+        });
+        const data = await res.json();
+        if (!data.ok) {
+            alert(data.error || "Phòng không tồn tại hoặc đã kết thúc!");
+            btnJoinRoom.disabled = false;
+            btnJoinRoom.innerText = "Vào phòng";
+            guestConnectionMsg.classList.add('hidden');
+            return;
+        }
+
+        handleNetworkMessage({ type: 'room_joined', roomId });
+        setupGuestWebRtc();
+
+        if (data.offer) {
+            console.log("[HTTP Signaling] Guest nhận Offer lập tức khi join!");
+            await handleWebRtcOffer(data.offer);
+        }
+
+        // Bắt đầu poll nhận Offer (nếu chưa có) và ICE Candidates từ Host
+        if (httpPollInterval) clearInterval(httpPollInterval);
+        httpPollInterval = setInterval(async () => {
+            if (!peerConnection || peerConnection.connectionState === 'connected') {
+                if (peerConnection && peerConnection.connectionState === 'connected') {
+                    clearInterval(httpPollInterval);
+                    httpPollInterval = null;
+                }
+                return;
+            }
+            try {
+                const pollRes = await fetch(`/api/room/poll?roomId=${roomId}&role=guest`);
+                if (!pollRes.ok) return;
+                const pollData = await pollRes.json();
+
+                if (pollData.offer && (peerConnection.signalingState === 'stable' || !peerConnection.remoteDescription)) {
+                    console.log("[HTTP Signaling] Guest nhận Offer từ polling!");
+                    await handleWebRtcOffer(pollData.offer);
+                }
+
+                if (Array.isArray(pollData.candidates) && pollData.candidates.length > 0) {
+                    for (const cand of pollData.candidates) {
+                        try {
+                            await peerConnection.addIceCandidate(new RTCIceCandidate(cand));
+                        } catch (err) {
+                            console.warn("Lỗi add ICE candidate:", err);
+                        }
+                    }
+                }
+            } catch (_) {}
+        }, 400);
+
+    } catch (e) {
+        console.error("Lỗi joinRoomHttp:", e);
+        showSyncNotification("⚠️ Không thể vào phòng: " + e.message, 4000);
+        btnJoinRoom.disabled = false;
+        btnJoinRoom.innerText = "Vào phòng";
+        guestConnectionMsg.classList.add('hidden');
+    }
+}
+
 btnCreateRoom.addEventListener('click', () => {
     btnCreateRoom.disabled = true;
     btnCreateRoom.innerText = "Đang tạo phòng...";
     const randomCode = Math.floor(1000 + Math.random() * 9000);
     const roomId = `bvn-${randomCode}`;
-    connectWebSocketAndSend({ type: 'create_room', roomId });
+    if (isVercelHost) {
+        createRoomHttp(roomId);
+    } else {
+        connectWebSocketAndSend({ type: 'create_room', roomId });
+    }
 });
 
 btnJoinRoom.addEventListener('click', () => {
@@ -2163,12 +2348,22 @@ function joinRoomAsGuest(roomId) {
     }
     window.focus();
 
-    connectWebSocketAndSend({ type: 'join_room', roomId });
+    if (isVercelHost) {
+        joinRoomHttp(roomId);
+    } else {
+        connectWebSocketAndSend({ type: 'join_room', roomId });
+    }
 }
 
-// Tự động đánh thức máy chủ Render trong nền khi vừa mở trang (chống delay cold start)
+// Tự động đánh thức máy chủ trong nền khi vừa mở trang (chống delay cold start)
 function wakeUpSignalingServer() {
     try {
+        if (isVercelHost) {
+            fetch('/healthz', { cache: 'no-cache' })
+                .then(() => console.log("[Signaling] Đã kích hoạt Vercel Edge Serverless Signaling"))
+                .catch(() => {});
+            return;
+        }
         const wsUrl = getWebSocketUrl();
         let httpUrl = null;
         if (wsUrl.startsWith('wss://')) {
