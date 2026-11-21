@@ -655,14 +655,13 @@ if (gameEditionSelect) {
             localStorage.setItem('bvn_game_edition', currentEdition);
             const ed = EDITIONS[currentEdition];
             showSyncNotification(`🔄 Đang chuyển sang ${ed.name}...`);
-            if (currentEdition === 'animebattle' && window.TceamHub) {
+            if (window.TceamHub) {
                 if (typeof stopTceamNetplay === 'function') stopTceamNetplay();
                 if (loadingOverlay) loadingOverlay.classList.add('hidden');
                 const btnBack = document.getElementById('btnBackToHub');
                 if (btnBack) btnBack.classList.add('hidden');
-                window.TceamHub.show();
+                window.TceamHub.show(currentEdition);
             } else {
-                if (window.TceamHub) window.TceamHub.hide();
                 initRuffleGame();
             }
             if (myRole === 'host') {
@@ -3978,6 +3977,7 @@ const BVN_MASTER_ROSTER = {
     ]
 };
 const BAN_PICK_ROSTER = BVN_MASTER_ROSTER;
+window.BVN_MASTER_ROSTER = BVN_MASTER_ROSTER;
 
 const banPickModal = document.getElementById('banPickModal');
 const btnOpenBanPick = document.getElementById('btnOpenBanPick');
@@ -4456,9 +4456,9 @@ window.addEventListener('DOMContentLoaded', () => {
     renderGuides();
     syncHudKeyLabels();
     setupVirtualControls();
-    if (currentEdition === 'animebattle' && window.TceamHub) {
+    if (window.TceamHub) {
         if (loadingOverlay) loadingOverlay.classList.add('hidden');
-        window.TceamHub.show();
+        window.TceamHub.show(currentEdition);
     } else {
         initRuffleGame();
     }
@@ -4659,7 +4659,63 @@ const btnBackToHub = document.getElementById('btnBackToHub');
 if (btnBackToHub) {
     btnBackToHub.addEventListener('click', () => {
         stopTceamNetplay();
-        if (window.TceamHub) window.TceamHub.show();
+        if (window.TceamHub) window.TceamHub.show(currentEdition);
         btnBackToHub.classList.add('hidden');
     });
 }
+
+window.launchBvn26Match = async function (cfg, isOnline = false) {
+    if (currentEdition !== 'bvn26') {
+        currentEdition = 'bvn26';
+        localStorage.setItem('bvn_game_edition', 'bvn26');
+        if (gameEditionSelect) gameEditionSelect.value = 'bvn26';
+    }
+
+    if (window.TceamHub) window.TceamHub.hide();
+    const btnBack = document.getElementById('btnBackToHub');
+    if (btnBack) btnBack.classList.remove('hidden');
+
+    if (loadingOverlay) {
+        loadingOverlay.classList.remove('hidden');
+        if (loadingMsg) loadingMsg.innerText = 'Đang nạp Bleach vs Naruto 2.6 & vào thẳng trận...';
+        if (loadingSubMsg) loadingSubMsg.innerText = 'Khởi động Ruffle & kết nối bvnBridge...';
+    }
+
+    let bridgeReady = false;
+    try {
+        bridgeReady = !!(bvnBridge.isReady() && bvnBridge.call('getBattleState'));
+    } catch (_) {}
+
+    if (!bridgeReady) {
+        await initRuffleGame();
+        const start = Date.now();
+        while (Date.now() - start < 20000) {
+            try {
+                if (bvnBridge.isReady() && bvnBridge.call('getBattleState')) {
+                    bridgeReady = true;
+                    break;
+                }
+            } catch (_) {}
+            await new Promise(r => setTimeout(r, 200));
+        }
+    }
+
+    if (loadingOverlay) loadingOverlay.classList.add('hidden');
+    const modo = cfg.mode === 'cpu' ? 2 : cfg.mode === 'training' ? 4 : 3;
+
+    if (isOnline && myRole === 'host') {
+        sendFastMessage({
+            type: 'sync_start_match',
+            p1: cfg.p1,
+            p2: cfg.p2,
+            p1Assist: cfg.p1Assist,
+            p2Assist: cfg.p2Assist,
+            stage: cfg.stage,
+            modo
+        });
+    }
+
+    bvnBridge.startMatch(cfg.p1, cfg.p2, cfg.p1Assist, cfg.p2Assist, cfg.stage, modo);
+    focusGame();
+    showSyncNotification(`⚔️ ĐÃ VÀO TRẬN BVN 2.6: ${findRosterItem(cfg.p1).name} vs ${findRosterItem(cfg.p2).name}!`);
+};

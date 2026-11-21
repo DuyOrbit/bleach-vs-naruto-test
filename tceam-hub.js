@@ -190,6 +190,7 @@
     // ==========================================
     let catalog = null;
     let hubState = {
+        edition: 'animebattle', // 'animebattle' | 'bvn26'
         mode: 'cpu',         // 'cpu' | 'local' | 'training' | 'arcade' | 'online'
         teamSize: 1,         // 1 | 2 | 3
         p1: ['一护'],
@@ -197,6 +198,12 @@
         p1Assist: null,
         p2Assist: null,
         map: 'xianshi',
+        // BVN 2.6 specific defaults
+        bvnP1: '一护',
+        bvnP2: '鸣人',
+        bvnP1Assist: '夜一',
+        bvnP2Assist: '我爱罗',
+        bvnStage: '火影瀑布',
         cpuLevel: 3,
         hp: 1,
         time: 60,
@@ -268,9 +275,186 @@
         return req;
     }
 
+    function renderBvn26Hub(root) {
+        const roster = window.BVN_MASTER_ROSTER;
+        if (!roster) return;
+        const isOnline = hubState.mode === 'online';
+        if (hubState.mode === 'arcade') hubState.mode = 'cpu';
+
+        const bvnModes = MODE_CARDS.filter(m => m.id !== 'arcade');
+        const isAssistSlot = hubState.activeSlot === 'p1Assist' || hubState.activeSlot === 'p2Assist';
+        const q = hubState.search.trim().toLowerCase();
+
+        const findF = (id) => [...roster.bleach, ...roster.naruto, ...roster.guest].find(x => x.id === id) || roster.bleach[0];
+        const findA = (id) => roster.assist.find(x => x.id === id) || roster.assist[0];
+
+        let pool = [];
+        if (isAssistSlot) {
+            pool = roster.assist;
+        } else {
+            if (hubState.seriesFilter === 'bleach') pool = roster.bleach;
+            else if (hubState.seriesFilter === 'naruto') pool = roster.naruto;
+            else if (hubState.seriesFilter === 'guest') pool = roster.guest;
+            else pool = [...roster.bleach, ...roster.naruto, ...roster.guest];
+        }
+        pool = pool.filter(item => !q || item.name.toLowerCase().includes(q) || item.sub.toLowerCase().includes(q) || item.id.toLowerCase().includes(q));
+
+        const p1F = findF(hubState.bvnP1);
+        const p2F = findF(hubState.bvnP2);
+        const p1A = findA(hubState.bvnP1Assist);
+        const p2A = findA(hubState.bvnP2Assist);
+
+        const renderBvnTeam = (role, f, a) => {
+            const label = role === 'p1' ? '🔴 P1 (Bạn)' : (hubState.mode === 'cpu' ? '🤖 P2 (CPU)' : '🔵 P2');
+            const fKey = role === 'p1' ? 'p1' : 'p2';
+            const aKey = role === 'p1' ? 'p1Assist' : 'p2Assist';
+            return `<div class="th-team-box ${hubState.activeSlot === fKey ? 'active' : ''}" data-slot="${fKey}">
+                <div class="th-team-title">${label}</div>
+                <div class="th-slots-row">
+                    <div class="th-slot-chip" title="${f.name}">
+                        ${f.avatar ? `<img src="${f.avatar}" alt="">` : (f.icon || '👤')}
+                        <span>${f.name}</span>
+                    </div>
+                    <div class="th-slot-chip assist ${hubState.activeSlot === aKey ? 'active' : ''}" data-slot="${aKey}">
+                        ${a.avatar ? `<img src="${a.avatar}" alt="">` : (a.icon || '⚡')}
+                        <span>${a.name}</span>
+                    </div>
+                </div>
+            </div>`;
+        };
+
+        const stagesHtml = roster.stages.map(s =>
+            `<option value="${s.id}" ${s.id === hubState.bvnStage ? 'selected' : ''}>${s.name}</option>`
+        ).join('');
+
+        const cardsHtml = pool.map(item => {
+            const selected = isAssistSlot
+                ? ((hubState.activeSlot === 'p1Assist' ? hubState.bvnP1Assist : hubState.bvnP2Assist) === item.id)
+                : ((hubState.activeSlot === 'p1' ? hubState.bvnP1 : hubState.bvnP2) === item.id);
+            return `<button class="th-char-card ${selected ? 'selected' : ''}" data-id="${item.id}" title="${item.name}">
+                <div class="th-char-img">${item.avatar ? `<img src="${item.avatar}" alt="${item.name}">` : (item.icon || '👤')}</div>
+                <div class="th-char-name">${item.name}</div>
+            </button>`;
+        }).join('');
+
+        root.innerHTML = `
+            <div class="th-shell">
+                <div class="th-topbar">
+                    <div class="th-brand">⚔️ BLEACH VS NARUTO 2.6 <span>• Chọn chế độ & tướng trước, bấm Đánh mới nạp game</span></div>
+                </div>
+
+                <div class="th-modes-row">
+                    ${bvnModes.map(m => `
+                        <button class="th-mode-card ${hubState.mode === m.id ? 'active' : ''}" data-mode="${m.id}">
+                            <span class="th-mode-icon">${m.icon}</span>
+                            <span class="th-mode-info"><strong>${m.title}</strong><small>${m.desc}</small></span>
+                        </button>
+                    `).join('')}
+                </div>
+
+                ${isOnline ? `
+                <div class="th-online-bar">
+                    <div class="th-online-left">
+                        <button id="thBtnQuickMatch" class="btn btn-primary btn-sm">
+                            ${hubState.qmStatus === 'searching' ? '⏳ Đang tìm đối thủ... (Bấm để hủy)' : '⚡ Tìm Trận Ngẫu Nhiên (Quick Match)'}
+                        </button>
+                        <span class="th-muted">${hubState.qmStatus === 'matched' ? '✅ Đã ghép trận! Đang vào phòng...' : 'Hoặc dùng bảng Tạo/Vào phòng bên dưới'}</span>
+                    </div>
+                </div>` : ''}
+
+                <div class="th-teams-grid">
+                    ${renderBvnTeam('p1', p1F, p1A)}
+                    <div class="th-center-rules">
+                        <label>🗺️ Bản đồ:
+                            <select id="thMapSelect">${stagesHtml}</select>
+                        </label>
+                        <button id="thBtnStartMatch" class="btn btn-primary th-launch-btn">⚔️ VÀO TRẬN NGAY (NẠP GAME)</button>
+                    </div>
+                    ${renderBvnTeam('p2', p2F, p2A)}
+                </div>
+
+                <div class="th-roster-bar">
+                    <div class="th-filters">
+                        <button class="th-filter-btn ${!isAssistSlot && hubState.seriesFilter === 'all' ? 'active' : ''}" data-series="all">Tất cả</button>
+                        <button class="th-filter-btn ${!isAssistSlot && hubState.seriesFilter === 'bleach' ? 'active' : ''}" data-series="bleach">Bleach</button>
+                        <button class="th-filter-btn ${!isAssistSlot && hubState.seriesFilter === 'naruto' ? 'active' : ''}" data-series="naruto">Naruto</button>
+                        <button class="th-filter-btn ${!isAssistSlot && hubState.seriesFilter === 'guest' ? 'active' : ''}" data-series="guest">Khách Mời</button>
+                        <button class="th-filter-btn ${isAssistSlot ? 'active' : ''}" id="thBtnTabAssist">🛡️ Trợ Thủ (${roster.assist.length})</button>
+                    </div>
+                    <input id="thSearchInput" type="text" placeholder="🔍 Tìm tướng hoặc trợ thủ..." value="${hubState.search.replace(/"/g, '&quot;')}">
+                </div>
+
+                <div class="th-char-grid">${cardsHtml || '<div class="th-muted">Không tìm thấy nhân vật phù hợp</div>'}</div>
+            </div>
+        `;
+
+        root.querySelectorAll('.th-mode-card').forEach(btn => {
+            btn.onclick = () => { hubState.mode = btn.dataset.mode; renderHub(); };
+        });
+        root.querySelectorAll('[data-slot]').forEach(el => {
+            el.onclick = (e) => { e.stopPropagation(); hubState.activeSlot = el.dataset.slot; renderHub(); };
+        });
+        root.querySelectorAll('.th-filter-btn[data-series]').forEach(btn => {
+            btn.onclick = () => {
+                if (isAssistSlot) hubState.activeSlot = 'p1';
+                hubState.seriesFilter = btn.dataset.series;
+                renderHub();
+            };
+        });
+        const assistTabBtn = root.querySelector('#thBtnTabAssist');
+        if (assistTabBtn) {
+            assistTabBtn.onclick = () => {
+                hubState.activeSlot = (hubState.activeSlot === 'p2' || hubState.activeSlot === 'p2Assist') ? 'p2Assist' : 'p1Assist';
+                renderHub();
+            };
+        }
+        const searchEl = root.querySelector('#thSearchInput');
+        if (searchEl) {
+            searchEl.oninput = () => {
+                hubState.search = searchEl.value;
+                renderHub();
+                const ref = root.querySelector('#thSearchInput');
+                if (ref) { ref.focus(); ref.setSelectionRange(ref.value.length, ref.value.length); }
+            };
+        }
+        root.querySelectorAll('.th-char-card').forEach(btn => {
+            btn.onclick = () => {
+                const id = btn.dataset.id;
+                if (hubState.activeSlot === 'p1') hubState.bvnP1 = id;
+                else if (hubState.activeSlot === 'p2') hubState.bvnP2 = id;
+                else if (hubState.activeSlot === 'p1Assist') hubState.bvnP1Assist = id;
+                else if (hubState.activeSlot === 'p2Assist') hubState.bvnP2Assist = id;
+                renderHub();
+            };
+        });
+        const mapSel = root.querySelector('#thMapSelect');
+        if (mapSel) mapSel.onchange = () => { hubState.bvnStage = mapSel.value; };
+        const qmBtn = root.querySelector('#thBtnQuickMatch');
+        if (qmBtn) qmBtn.onclick = toggleQuickMatch;
+        const startBtn = root.querySelector('#thBtnStartMatch');
+        if (startBtn) {
+            startBtn.onclick = () => {
+                if (typeof window.launchBvn26Match === 'function') {
+                    window.launchBvn26Match({
+                        mode: hubState.mode,
+                        p1: hubState.bvnP1,
+                        p2: hubState.bvnP2,
+                        p1Assist: hubState.bvnP1Assist,
+                        p2Assist: hubState.bvnP2Assist,
+                        stage: hubState.bvnStage
+                    }, hubState.mode === 'online');
+                }
+            };
+        }
+    }
+
     function renderHub() {
         const root = document.getElementById('tceamHub');
         if (!root) return;
+        if (hubState.edition === 'bvn26') {
+            renderBvn26Hub(root);
+            return;
+        }
 
         const isOnline = hubState.mode === 'online';
         if (isOnline && hubState.teamSize !== 1) hubState.teamSize = 1;
@@ -535,8 +719,13 @@
 
     window.TceamLockstep = TceamLockstep;
     window.TceamHub = {
-        async show() {
-            await loadCatalog();
+        async show(edition) {
+            if (edition) hubState.edition = edition;
+            const targetEdition = hubState.edition;
+            if (targetEdition === 'animebattle') {
+                await loadCatalog();
+                if (hubState.edition !== targetEdition) return;
+            }
             const el = document.getElementById('tceamHub');
             if (el) el.classList.remove('hidden');
             hubState.inMatch = false;
@@ -558,3 +747,4 @@
         }
     };
 })();
+
